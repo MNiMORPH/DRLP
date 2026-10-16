@@ -15,9 +15,13 @@ model is specified against, ``Q = R A`` with ``R`` in m/s, rather than GRLP's
 ``q_R`` (m/hr) with its ``A_R`` saturation area.  They are not the same
 parameter.
 
-Note that ``K_Q Q**m = (K_Q R**m) A**m``, so an area-based erodibility is a
-rescaling of a discharge-based one.  Both routes are exposed; neither is
-privileged.
+The model can be driven by discharge or by drainage area alone.  Because
+``K_Q Q**m = (K_Q R**m) A**m``, the two are a rescaling of one another, and
+``set_K``'s ``basis`` states which one a given ``K`` belongs to.  Area is the
+convention of the stream-power literature and of fastscapelib, Landlab and
+fastscapelib-fortran; discharge is the form ``HANDOFF.md`` specifies and is
+GRLP's convention.  Neither is privileged here, but one of them has to be
+named, because it fixes what ``K``'s number means.
 """
 
 import numpy as np
@@ -38,6 +42,7 @@ class LongProfile(object):
         self.A = None
         self.Q = None
         self.K = None
+        self.K_basis = "Q"
         self.U = 0.0
         self.m = 0.5
         self.n = 1.0
@@ -118,11 +123,41 @@ class LongProfile(object):
 
     # ------------------------------------------------------- erosion law
 
-    def set_K(self, K):
-        """Set erodibility.  Scalar or per node; units depend on m and n."""
+    def set_K(self, K, basis="Q"):
+        """Set erodibility.  Scalar or per node; units depend on ``m``, ``n``
+        and the basis.
+
+        ``basis`` says which quantity the stream-power term acts on, and
+        therefore what ``K`` means:
+
+        - ``"Q"`` (default): ``dz/dt = U - K Q**m S**n``, the form
+          ``HANDOFF.md`` specifies and GRLP's discharge-based convention.
+        - ``"A"``: ``dz/dt = U - K A**m S**n``, driven by drainage area alone.
+          This is the convention of the stream-power literature and of all
+          three reference implementations -- fastscapelib's
+          ``erode(elevation, drainage_area, dt)``, Landlab's required
+          ``drainage_area`` field, fastscapelib-fortran's ``a(ijk)``.
+
+        The two are related by ``K_A = K_Q R**m`` when ``Q = R A``, so this is
+        a rescaling and not a different model.  It is nonetheless a MODEL
+        choice, not a bookkeeping one: it fixes what ``K``'s number means and
+        what the profile predicts, which is why it is stated here rather than
+        inferred from which field happens to be populated.
+
+        (``basis`` is my naming, not borrowed from a precedent.)
+        """
+        if basis not in ("Q", "A"):
+            raise ValueError(f'basis must be "Q" or "A"; got {basis!r}')
         self.K = np.broadcast_to(np.asarray(K, dtype=float),
                                  self.x.shape).copy()
+        self.K_basis = basis
         return self
+
+    @staticmethod
+    def K_A_from_K_Q(K_Q, R, m):
+        """``K_A = K_Q R**m``: the area-based erodibility equivalent to a
+        discharge-based one under ``Q = R A``."""
+        return K_Q * R**m
 
     def set_mn(self, m=None, n=None):
         """Set the discharge and slope exponents."""
@@ -173,6 +208,29 @@ class LongProfile(object):
     # ----------------------------------------------------------- diagnostics
 
     @property
+    def driver(self):
+        """The quantity the stream-power term acts on: ``Q`` or ``A``.
+
+        Set by :meth:`set_K`'s ``basis``.  This is what is passed into
+        :func:`drlp.incision.step`, whose corresponding argument is named
+        ``Q`` because that is the form the governing equation and FluvTree's
+        sweep are written in.
+        """
+        if self.K_basis == "A":
+            if self.A is None:
+                raise ValueError(
+                    'K was set with basis="A", so drainage area drives the '
+                    "model: call set_A first"
+                )
+            return self.A
+        if self.Q is None:
+            raise ValueError(
+                'K was set with basis="Q", so discharge drives the model: '
+                "call set_Q, or set_K(..., basis=\"A\") to drive from area"
+            )
+        return self.Q
+
+    @property
     def dx(self):
         """Distance [m] from each node to its receiver; last is to the ghost."""
         return np.diff(np.append(self.x, self.x_bl))
@@ -184,7 +242,7 @@ class LongProfile(object):
 
     def steady_state_slope(self):
         """``S = (U / (K Q**m))**(1/n)``, the closed-form steady slope."""
-        return (self.U / (self.K * self.Q**self.m)) ** (1.0 / self.n)
+        return (self.U / (self.K * self.driver**self.m)) ** (1.0 / self.n)
 
     def set_steady_state(self):
         """Set ``z`` to the analytic steady-state profile.
@@ -215,7 +273,7 @@ class LongProfile(object):
         if dt is None:
             raise ValueError("evolve needs dt [s]")
         for _ in range(int(nt)):
-            self.z = step(self.x, self.z, self.Q, self.K, self.m, self.n,
-                          self.U, dt, self.x_bl, self.z_bl)
+            self.z = step(self.x, self.z, self.driver, self.K, self.m,
+                          self.n, self.U, dt, self.x_bl, self.z_bl)
             self.t += dt
         return self
