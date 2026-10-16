@@ -18,5 +18,7 @@ mechanistic model (abrasion, plucking, tools and cover, block size).
 """
 
 from ._version import __version__
+from .incision import ConvergenceError, step
+from .longprofile import LongProfile
 
-__all__ = ["__version__"]
+__all__ = ["ConvergenceError", "LongProfile", "step", "__version__"]
