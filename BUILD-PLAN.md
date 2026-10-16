@@ -209,18 +209,41 @@ dependency direction. **FluvTree is not edited from this repository.**
 
 ---
 
-## Open questions
+## Decisions, 16 October 2026
 
-Each of these is a parameter or a convention I would otherwise be choosing.
+Andy's answers to the five open questions. Recorded here so they are not
+re-litigated.
 
-1. **Convergence criterion and iteration cap** for the general-`n` root-find.
-   The handoff says to converge on `z` scaled by local relief and to fail loudly
-   rather than return a half-converged node, which makes the cap a real choice.
-2. **`x_downstream` is missing from Amendment 1's signature.** The slope at the
-   downstream-most node needs the distance to the boundary, not only its
-   elevation – FluvTree's sweep carries both (`z_end, x_end = z_bl, x_bl`).
-   Add the argument, or fix a ghost-node convention instead?
-3. **scipy as a test-only dependency**, to check our hand-rolled Brent against
-   `scipy.optimize.brentq`. The core stays numpy-only either way.
-4. **Names.** Package `drlp`, distribution `DRLP`, after GRLP's `grlp` / `GRLP`.
-5. **Hack's law** for `A(x)` in the demo: core feature, or demo-only helper?
+1. **Convergence criterion and iteration cap: follow Fastscape** if possible.
+   Folded into Phase 3 above; Phase 0 must now extract the actual numbers.
+2. **Base level follows GRLP with `x_bl`** - a ghost node. Folded into Phase 2.
+3. **Dependencies need not be light.** scipy is available for tests and
+   analysis. **One question left open deliberately** - see below.
+4. **Names: package `drlp`, distribution `DRLP`**, after `grlp` / `GRLP`.
+5. **Hack's law is a core feature**, not a demo helper. It belongs with the
+   `Q = R A` runoff rule in Phase 4: `A(x) = k_a x**h` as a first-class way to
+   supply drainage area, with the demo a consumer of it like anything else.
+
+### The one question still open
+
+**Does "dependencies need not be light" relax `HANDOFF.md` §3's numpy-only
+*core*, or only the test and analysis extras?**
+
+Asking rather than assuming, because §3 gave a specific reason and the answer
+was given to a question about test dependencies. §3 ties the numpy-only core to
+the WebAssembly path - `hillcreep` declares numpy and nothing else "on purpose,
+because its interactive demo compiles to WebAssembly through `artesian` and
+runs in a browser", and contrasts it with `import fluvtree` pulling numpy,
+scipy and networkx. Putting scipy in DRLP's core is a change to what the
+browser demo downloads, and that is Phase 7's problem, not a packaging detail.
+
+Both readings are workable and neither blocks Phase 0:
+
+- **Core stays numpy-only.** Brent is ~40 lines of DRLP, validated against
+  `scipy.optimize.brentq` in the tests. scipy lands in the `test` extra.
+- **Core may use scipy.** `scipy.optimize.brentq` directly, and the analysis
+  tools get scipy too. Simpler code, heavier browser payload.
+
+Default if you would rather not decide: keep the core numpy-only and use scipy
+freely in tests, examples and analysis. It costs forty lines and keeps §3's
+guarantee intact. Say the word and scipy goes in the core instead.
