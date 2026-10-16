@@ -103,8 +103,15 @@ and the call:
 
 - `x` is **the fraction of the original relief retained**, so the bracket is
   `[0, 1]` for every node, at every scale.
-- Tolerances are scipy's `brentq` defaults - `xtol = 1e-12`,
-  `rtol = 4.4408920985006262e-16` (2x machine epsilon), **`maxiter = 100`**.
+- `xtol = 1e-12`, `rtol = 4.4408920985006262e-16` (2x machine epsilon),
+  **`maxiter = 100`**. Landlab's comment says these "are the defaults if one
+  were to import brentq from scipy.optimize". **They are not**, as of scipy
+  1.11.4 on this machine: the public defaults are `xtol = 2e-12` and
+  `rtol = 4*eps = 8.881784197001252e-16`, each a factor of two looser. More
+  than a documentation slip - the public wrapper *enforces* `rtol >= 4*eps`
+  and raises `ValueError: rtol too small (4.44089e-16 < 8.88178e-16)` on
+  Landlab's value. The private `_brentq` does not enforce it, so that private
+  import is load-bearing for the tolerance, not merely a speed choice.
 - `n = 1` has an analytic solution, `x = (1 + beta)/(1 + alpha)`.
 - Nodes at or below their receiver are skipped by the guard
   `if src_id != dst_id and z[src_id] > z[dst_id]`.
@@ -117,6 +124,22 @@ and the call:
 monotonically in `x` for `alpha > 0`, `n > 0`. This supersedes the handoff's
 20,000-draw verification of `[z_r, z_old + dt*U]`: same guarantee, obtained
 analytically, in a variable that is dimensionless by construction.
+
+**And the dimensional bracket is not merely untidy, it fails.**
+`prototypes/00_dimensionless_equivalence.py` shows `f_dim = D0 * f_x` exactly,
+so the two are one equation - then measures both over 20,000 draws that add an
+absolute elevation `z_r`, an axis the handoff's sweep did not include:
+
+    dimensional   bracket failures : 23
+    dimensionless bracket failures : 0
+    worst root disagreement        : 5.0e-11 of local relief
+
+`f_dim` evaluates `z - z_old - dt*U`, a difference of absolute elevations, so
+once the erosion term drops below the rounding error of that difference the
+sign of `f_dim` at the upper bracket is noise. In the first failure the
+rounding is 55x the erosion term, at `|z_r|/D0 = 3511`. `f_x(1) = alpha > 0`
+exactly and cannot do this. `|z| >> D0` is the ordinary case for a real
+profile.
 
 Folding uplift in costs nothing: use `z_old + dt*U` wherever Landlab writes
 `z_node(t)`, and `f` is unchanged.
@@ -154,9 +177,10 @@ folded into `z_old`. Two notes on the parameters, which are Andy's to set:
   tolerance.** 1e-3 in metres is dimensional and loose, it means different
   quantities in the two Fastscape codes, and the handoff asked for a tolerance
   *scaled by local relief* - which is what `x` already is. Proposal: scipy's
-  `brentq` defaults, as Landlab uses them (`xtol = 1e-12`,
-  `rtol = 4.4408920985006262e-16`). Brent is superlinear on a guaranteed
-  bracket, so the tight tolerance is nearly free.
+  **public** `brentq` defaults, `xtol = 2e-12` and `rtol = 4*eps`, reached
+  through `scipy.optimize.brentq` rather than Landlab's private `_brentq`.
+  Brent is superlinear on a guaranteed bracket, so the tight tolerance is
+  nearly free, and we do not inherit a tolerance the public API refuses.
 - **Keep a cap; neither Fastscape has one.** `maxiter = 100`, Landlab's and
   scipy's default, and **raise** rather than return a half-converged node, per
   `HANDOFF.md` §4. On a guaranteed bracket it should never fire.
