@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "DRLP"
+dynamic = ["version"]
+description = "Detachment-limited river long profile: implicit stream-power incision in one dimension"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "GPL-3.0-or-later"
+license-files = ["LICEN[CS]E*"]
+authors = [{ name = "Andrew D. Wickert", email = "awickert@umn.edu" }]
+keywords = [
+  "earth science",
+  "geomorphology",
+  "bedrock rivers",
+  "stream power",
+  "fluvial incision",
+  "longitudinal profile",
+  "landscape evolution",
+  "numerical modeling",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Education",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+# scipy is a core dependency for scipy.optimize.brentq, the general-n
+# root-find.  It is in the Pyodide distribution, so it does not cost the
+# WebAssembly demo anything but download weight -- see
+# design/01-prior-implementations.md section 5.
+dependencies = [
+  "numpy",
+  "scipy",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+# The interactive demo only.  panel is not in the Pyodide distribution; it
+# arrives as a pure-Python wheel through `artesian`.
+demo = ["panel>=1.4", "bokeh"]
+# Static figures only; not needed to run the model.
+figures = ["matplotlib"]
+
+# src-layout: the single ``drlp`` package lives under src/.
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["drlp*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "drlp._version.__version__" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[project.urls]
+Repository = "https://github.com/MNiMORPH/DRLP"
+Issues = "https://github.com/MNiMORPH/DRLP/issues"
