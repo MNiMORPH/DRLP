@@ -55,22 +55,84 @@ def test_hacks_law_and_the_runoff_rule():
     assert np.allclose(lp.Q, 1e-8 * lp.A)
 
 
-def test_area_based_K_is_a_rescaling_of_discharge_based_K():
-    # K_Q Q**m = (K_Q R**m) A**m, so the runoff route with K_Q and the
-    # area route with K_A = K_Q R**m must give identical profiles.
+def test_area_basis_and_discharge_basis_agree_under_the_rescaling():
+    # K_Q Q**m = (K_Q R**m) A**m, so driving from discharge with K_Q and from
+    # area with K_A = K_Q R**m must give identical profiles. The identity the
+    # two routes exist to satisfy, and it is checked through the first-class
+    # area route -- not by putting area into the discharge slot.
     R = 1e-8
     common = dict(dx=1000.0, nx=25)
 
     lp_Q = (LongProfile().set_x(**common).set_A(k_xA=1.0).set_Q(R=R)
-            .set_K(K).set_mn(m=M, n=1.0).set_uplift_rate(U).set_bl(z=0.0))
+            .set_K(K, basis="Q").set_mn(m=M, n=1.0)
+            .set_uplift_rate(U).set_bl(z=0.0))
     lp_A = (LongProfile().set_x(**common).set_A(k_xA=1.0)
-            .set_K(K * R**M).set_mn(m=M, n=1.0).set_uplift_rate(U)
-            .set_bl(z=0.0))
-    lp_A.set_Q(Q=lp_A.A)          # discharge slot carries area
+            .set_K(LongProfile.K_A_from_K_Q(K, R, M), basis="A")
+            .set_mn(m=M, n=1.0).set_uplift_rate(U).set_bl(z=0.0))
 
     for lp in (lp_Q, lp_A):
         lp.set_steady_state()
     assert np.allclose(lp_Q.z, lp_A.z, rtol=1e-12, atol=0)
+    # and they stay identical through a transient
+    for lp in (lp_Q, lp_A):
+        lp.set_bl(z=-40.0)
+        lp.evolve(nt=30, dt=1e11)
+    assert np.allclose(lp_Q.z, lp_A.z, rtol=1e-12, atol=0)
+
+
+def test_driven_from_drainage_area_alone():
+    # A(x) and nothing else: discharge is never set.
+    lp = (LongProfile().set_x(dx=1000.0, nx=30)
+          .set_A(k_xA=1.0, P_xA=7 / 4.0)
+          .set_K(1e-13, basis="A").set_mn(m=0.45, n=1.0)
+          .set_uplift_rate(U).set_bl(z=0.0))
+    assert lp.Q is None
+    assert lp.driver is lp.A
+
+    lp.set_steady_state()
+    assert np.allclose(lp.S, lp.steady_state_slope(), rtol=1e-12, atol=0)
+    z0 = lp.z.copy()
+    lp.evolve(nt=20, dt=1e11)
+    assert np.allclose(lp.z, z0, rtol=0, atol=1e-6)
+
+
+def test_arbitrary_area_function_of_distance():
+    # A(x) need not be a power law. A stepwise jump in area -- a tributary
+    # junction -- must step the steady slope by (A_down/A_up)**(-m/n).
+    nx = 40
+    x = 1000.0 * np.arange(1, nx + 1)
+    A = np.where(x < 20000.0, 1e7, 4e7)        # area quadruples at a junction
+    lp = (LongProfile().set_x(x=x).set_A(A=A)
+          .set_K(1e-13, basis="A").set_mn(m=0.5, n=1.0)
+          .set_uplift_rate(U).set_bl(z=0.0))
+    lp.set_steady_state()
+
+    S = lp.S
+    ratio = S[-1] / S[0]
+    assert ratio == pytest.approx((4e7 / 1e7) ** (-0.5 / 1.0), rel=1e-12)
+    # and it is a fixed point of the transient solver
+    z0 = lp.z.copy()
+    lp.evolve(nt=20, dt=1e11)
+    assert np.allclose(lp.z, z0, rtol=0, atol=1e-6)
+
+
+def test_basis_errors_are_explicit():
+    lp = (LongProfile().set_x(dx=1000.0, nx=10)
+          .set_mn(m=M, n=1.0).set_uplift_rate(U).set_bl(z=0.0))
+    with pytest.raises(ValueError, match='basis must be'):
+        lp.set_K(K, basis="area")
+    # basis="A" with no area
+    lp.set_K(K, basis="A")
+    with pytest.raises(ValueError, match="call set_A first"):
+        _ = lp.driver
+    # basis="Q" with no discharge
+    lp.set_K(K, basis="Q")
+    with pytest.raises(ValueError, match="call set_Q"):
+        _ = lp.driver
+
+
+def test_K_A_from_K_Q_helper():
+    assert LongProfile.K_A_from_K_Q(1e-9, 1e-8, 0.5) == pytest.approx(1e-9 * 1e-8**0.5)
 
 
 def test_runoff_rule_requires_area():
