@@ -15,6 +15,7 @@ statement:
 
     x -> A    Hack's law, geometric:  A = k_xA x**P_xA   (P_xA = 7/4)
     A -> Q    hydrology:              Q = k_AQ A**P_AQ   (P_AQ = 0.7)
+    Q -> B    Leopold, optional:      B = k_QB Q**P_QB   (P_QB = 1/2)
 
 Composed, ``Q ~ x**(P_xA P_AQ)`` -- GRLP's ``P_xQ = P_xA * P_AQ``.  The runoff
 rule ``Q = R A`` is the LINEAR special case of the second, ``P_AQ = 1``, and
@@ -23,13 +24,21 @@ rule ``Q = R A`` is the LINEAR special case of the second, ``P_AQ = 1``, and
 GRLP's ``q_R`` (m/hr, with an ``A_R`` saturation area) is a different
 parameterisation of the same transfer and is not implemented here.
 
-CHANNEL WIDTH is not a variable in DRLP.  It enters only through ``m``, via
-downstream hydraulic geometry ``w ~ Q**b``: for unit stream power
-``m = a c (1 - b)``, so ``b`` is buried inside a number the user supplies for
-``m``.  That is the standard stream-power assumption and it is exact for a
-static power-law width.  It cannot represent width that adjusts dynamically --
-GRLP does carry width explicitly (``set_B``, ``narrow_by_incision``), and a
-model that needs that needs a width state variable, not a different ``m``.
+CHANNEL WIDTH can be handled either way, and the model does not choose for
+you:
+
+- IMPLICIT, the standard way and the default.  ``basis="Q"`` folds width into
+  ``m`` through ``B ~ Q**P_QB``, with the width coefficient absorbed into
+  ``K``.  Leopold's ``P_QB = 1/2`` gives ``m/n = 1/2``.  Exact whenever width
+  really is a power law of discharge, and ``k_QB`` is unidentifiable anyway.
+- EXPLICIT, semi-independent.  ``basis="Q/B"`` erodes with unit stream power
+  ``(Q/B)**m S**n`` and carries ``B`` as a field from :meth:`set_B`.  With a
+  power-law ``B`` this reduces exactly to the implicit form, which the test
+  suite proves rather than asserts; it is a genuinely different model only
+  when ``B`` is not a power law of ``Q``.
+
+Neither mode makes width a dynamic state variable that responds to incision.
+GRLP does that (``set_B``, ``narrow_by_incision``); DRLP does not.
 
 The model can be driven by discharge or by drainage area alone.  Because
 ``K_Q Q**m = (K_Q R**m) A**m``, the two are a rescaling of one another, and
@@ -57,6 +66,7 @@ class LongProfile(object):
         self.z = None
         self.A = None
         self.Q = None
+        self.B = None
         self.K = None
         self.K_basis = "Q"
         self.U = 0.0
@@ -189,6 +199,51 @@ class LongProfile(object):
         self.Q = k_AQ * self.A**self.P_AQ
         return self
 
+    def set_B(self, B=None, k_QB=None, P_QB=0.5):
+        """The ``Q -> B`` transfer: channel width [m], after Leopold.
+
+        ``B = k_QB Q**P_QB``, with ``P_QB`` Leopold & Maddock's downstream
+        hydraulic-geometry exponent, 1/2 by default.  Or pass ``B`` as an
+        array -- measured widths, or a width that varies for reasons the
+        power law does not capture.
+
+        Width is only used when ``K`` is set with ``basis="Q/B"``.  With the
+        default ``basis="Q"`` width is implicit in ``m`` and this method need
+        never be called; see :meth:`set_K`.
+        """
+        if B is not None:
+            self.B = np.broadcast_to(np.asarray(B, dtype=float),
+                                     self.x.shape).copy()
+            return self
+        if k_QB is None:
+            raise ValueError("set_B needs B, or k_QB")
+        if self.Q is None:
+            raise ValueError("the Q -> B transfer needs Q; call set_Q first")
+        self.k_QB = k_QB
+        self.P_QB = P_QB
+        self.B = k_QB * self.Q**P_QB
+        return self
+
+    @staticmethod
+    def implicit_m_from_unit(m_unit, P_QB=0.5):
+        """``m`` for the implicit form equivalent to unit stream power.
+
+        ``m_implicit = m_unit (1 - P_QB)``.  With Leopold's 1/2 this halves
+        the exponent, which is why the standard implicit form has
+        ``m/n = 1/2``.
+        """
+        return m_unit * (1.0 - P_QB)
+
+    @staticmethod
+    def implicit_K_from_unit(K_unit, k_QB, m_unit):
+        """``K`` for the implicit form equivalent to unit stream power.
+
+        ``K_implicit = K_unit k_QB**(-m_unit)``.  The width coefficient is
+        absorbed here, which is exactly why ``k_QB`` is not identifiable from
+        a profile: any ``k_QB`` can be traded against ``K``.
+        """
+        return K_unit * k_QB ** (-m_unit)
+
     # ------------------------------------------------------- erosion law
 
     def set_K(self, K, basis="Q"):
@@ -205,6 +260,26 @@ class LongProfile(object):
           three reference implementations -- fastscapelib's
           ``erode(elevation, drainage_area, dt)``, Landlab's required
           ``drainage_area`` field, fastscapelib-fortran's ``a(ijk)``.
+        - ``"Q/B"``: ``dz/dt = U - K (Q/B)**m S**n``, UNIT stream power, with
+          channel width carried explicitly from :meth:`set_B`.
+
+        WIDTH.  Under ``"Q"`` and ``"A"`` width is implicit in ``m``, through
+        downstream hydraulic geometry ``B ~ Q**P_QB``: unit stream power
+        ``(Q/B)**m`` becomes ``Q**(m(1-P_QB))`` with the width coefficient
+        absorbed into ``K``.  With Leopold's ``P_QB = 1/2`` that is
+        ``m/n = 1/2``, the standard choice and the one this model defaults to
+        in spirit.  This is the normal way to run a stream-power model and it
+        loses nothing when width really is a power law of discharge.
+
+        ``"Q/B"`` is only SEMI-independent: if ``B = k_QB Q**P_QB`` exactly,
+        it reduces algebraically to ``"Q"`` with
+        ``m -> m(1 - P_QB)`` and ``K -> K k_QB**(-m)``
+        (:meth:`implicit_m_from_unit`, :meth:`implicit_K_from_unit`), so
+        ``k_QB`` cannot be identified from a profile.  It becomes a different
+        model only when ``B`` is NOT a power law of ``Q`` -- measured widths,
+        lithologic control, a channel that narrows where it steepens.  What it
+        always adds is that width becomes an output you can inspect rather
+        than an assumption folded into an exponent.
 
         The two are related by ``K_A = K_Q R**m`` when ``Q = R A``, so this is
         a rescaling and not a different model.  It is nonetheless a MODEL
@@ -214,8 +289,10 @@ class LongProfile(object):
 
         (``basis`` is my naming, not borrowed from a precedent.)
         """
-        if basis not in ("Q", "A"):
-            raise ValueError(f'basis must be "Q" or "A"; got {basis!r}')
+        if basis not in ("Q", "A", "Q/B"):
+            raise ValueError(
+                f'basis must be "Q", "A" or "Q/B"; got {basis!r}'
+            )
         self.K = np.broadcast_to(np.asarray(K, dtype=float),
                                  self.x.shape).copy()
         self.K_basis = basis
@@ -279,11 +356,24 @@ class LongProfile(object):
     def driver(self):
         """The quantity the stream-power term acts on: ``Q`` or ``A``.
 
-        Set by :meth:`set_K`'s ``basis``.  This is what is passed into
+        Set by :meth:`set_K`'s ``basis``: ``Q``, ``A``, or ``Q/B`` for unit
+        stream power.  This is what is passed into
         :func:`drlp.incision.step`, whose corresponding argument is named
         ``Q`` because that is the form the governing equation and FluvTree's
         sweep are written in.
         """
+        if self.K_basis == "Q/B":
+            if self.Q is None:
+                raise ValueError(
+                    'K was set with basis="Q/B", so unit stream power drives '
+                    "the model: call set_Q first"
+                )
+            if self.B is None:
+                raise ValueError(
+                    'K was set with basis="Q/B", so width is explicit: call '
+                    "set_B, or use basis=\"Q\" to fold width into m"
+                )
+            return self.Q / self.B
         if self.K_basis == "A":
             if self.A is None:
                 raise ValueError(
