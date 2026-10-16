@@ -10,10 +10,26 @@ area-discharge exponent, ``k_xA`` the Hack coefficient, and
 ``set_bl``/``set_x_bl``/``set_z_bl`` place the downstream ghost node
 (``grlp.grlp``: ``set_x_bl`` assigns ``x_ghost_downstream = x_bl``).
 
-One deliberate departure from GRLP: discharge from runoff is the plain rule the
-model is specified against, ``Q = R A`` with ``R`` in m/s, rather than GRLP's
-``q_R`` (m/hr) with its ``A_R`` saturation area.  They are not the same
-parameter.
+TWO TRANSFER FUNCTIONS, kept separate because they are different kinds of
+statement:
+
+    x -> A    Hack's law, geometric:  A = k_xA x**P_xA   (P_xA = 7/4)
+    A -> Q    hydrology:              Q = k_AQ A**P_AQ   (P_AQ = 0.7)
+
+Composed, ``Q ~ x**(P_xA P_AQ)`` -- GRLP's ``P_xQ = P_xA * P_AQ``.  The runoff
+rule ``Q = R A`` is the LINEAR special case of the second, ``P_AQ = 1``, and
+``set_Q(R=...)`` says so rather than leaving ``P_AQ`` set and ignored.
+
+GRLP's ``q_R`` (m/hr, with an ``A_R`` saturation area) is a different
+parameterisation of the same transfer and is not implemented here.
+
+CHANNEL WIDTH is not a variable in DRLP.  It enters only through ``m``, via
+downstream hydraulic geometry ``w ~ Q**b``: for unit stream power
+``m = a c (1 - b)``, so ``b`` is buried inside a number the user supplies for
+``m``.  That is the standard stream-power assumption and it is exact for a
+static power-law width.  It cannot represent width that adjusts dynamically --
+GRLP does carry width explicitly (``set_B``, ``narrow_by_incision``), and a
+model that needs that needs a width state variable, not a different ``m``.
 
 The model can be driven by discharge or by drainage area alone.  Because
 ``K_Q Q**m = (K_Q R**m) A**m``, the two are a rescaling of one another, and
@@ -79,16 +95,43 @@ class LongProfile(object):
     # ------------------------------------------------------ hydrology
 
     def set_hydrologic_constants(self, P_xA=7 / 4.0, P_AQ=0.7):
-        """GRLP's exponents.  ``P_xA`` is the inverse Hack exponent."""
+        """Exponents of the two transfer functions, with GRLP's names.
+
+        The chain from position to the quantity that erodes is two separate
+        transfers, and they are different kinds of statement:
+
+        1. ``x -> A``  **Hack's law**, geometric: ``A = k_xA x**P_xA``.
+           ``P_xA`` is the INVERSE Hack exponent (Hack's own law is
+           ``L ~ A**0.6``, so ``A ~ L**1.67``; GRLP's default is 7/4).
+        2. ``A -> Q``  **hydrology**: ``Q = k_AQ A**P_AQ``.  ``P_AQ`` is
+           sub-linear in GRLP's default, 0.7, because discharge grows more
+           slowly than area -- channel losses, and storms that do not cover a
+           large basin.
+
+        Composing them, ``Q ~ x**(P_xA P_AQ)``, which is GRLP's identity
+        ``P_xQ = P_xA * P_AQ``; :attr:`P_xQ` exposes it.
+        """
         self.P_xA = P_xA
         self.P_AQ = P_AQ
         return self
 
-    def set_A(self, A=None, k_xA=None, P_xA=None):
-        """Set drainage area [m**2] directly, or from Hack's law.
+    @property
+    def P_xQ(self):
+        """``P_xA * P_AQ``: the exponent of the composed transfer ``x -> Q``.
 
-        Hack's law here is GRLP's form, ``A = k_xA x**P_xA``, with ``P_xA``
-        the inverse Hack exponent (default 7/4).
+        GRLP's identity, which holds whenever both transfers are the power
+        laws above.  It does not hold if ``A`` or ``Q`` was set directly from
+        an array, so it is a property of the exponents, not a claim about the
+        current fields.
+        """
+        return self.P_xA * self.P_AQ
+
+    def set_A(self, A=None, k_xA=None, P_xA=None):
+        """The ``x -> A`` transfer: Hack's law.  Drainage area [m**2].
+
+        ``A = k_xA x**P_xA``, with ``P_xA`` the INVERSE Hack exponent
+        (default 7/4, GRLP's).  Or pass ``A`` as an array for a real basin,
+        in which case no power law is assumed.
         """
         if A is not None:
             self.A = np.broadcast_to(np.asarray(A, dtype=float),
@@ -102,23 +145,48 @@ class LongProfile(object):
             raise ValueError("set_A needs A, or k_xA")
         return self
 
-    def set_Q(self, Q=None, R=None):
-        """Set discharge [m**3/s] directly, or from runoff as ``Q = R A``.
+    def set_Q(self, Q=None, k_AQ=None, P_AQ=None, R=None):
+        """The ``A -> Q`` transfer: hydrology.  Discharge [m**3/s].
 
-        ``R`` is a runoff rate [m/s] and requires ``A``.  Because
-        ``K_Q Q**m = (K_Q R**m) A**m``, choosing the runoff route and
-        rescaling ``K`` are equivalent.
+        Three routes:
+
+        - ``Q``: an array or scalar, directly.
+        - ``k_AQ``, optionally ``P_AQ``: the general power law
+          ``Q = k_AQ A**P_AQ``, with ``P_AQ`` defaulting to whatever
+          :meth:`set_hydrologic_constants` holds (0.7).
+        - ``R``: a runoff rate [m/s], which is the LINEAR special case
+          ``Q = R A``, i.e. ``k_AQ = R`` with ``P_AQ = 1``.  Passing ``R``
+          therefore overrides ``P_AQ`` for this field, and says so by setting
+          it to 1.
+
+        Note the units: for ``P_AQ != 1``, ``k_AQ`` carries
+        m**3 s**-1 m**(-2 P_AQ), which is unavoidable in a power law and is
+        why ``R`` is the dimensionally clean route.  (GRLP sidesteps this with
+        its ``q_R``/``A_R`` saturation-area form; DRLP does not implement
+        that.)
         """
         if Q is not None:
             self.Q = np.broadcast_to(np.asarray(Q, dtype=float),
                                      self.x.shape).copy()
-        elif R is not None:
-            if self.A is None:
-                raise ValueError("Q = R A needs A; call set_A first")
+            return self
+        if R is not None:
+            if k_AQ is not None or P_AQ is not None:
+                raise ValueError(
+                    "R is the linear special case of k_AQ and P_AQ; pass "
+                    "either R, or k_AQ (with P_AQ), not both"
+                )
+            k_AQ, P_AQ = R, 1.0
             self.R = R
-            self.Q = R * self.A
-        else:
-            raise ValueError("set_Q needs Q, or R")
+        if k_AQ is None:
+            raise ValueError("set_Q needs Q, or k_AQ, or R")
+        if self.A is None:
+            raise ValueError(
+                "the A -> Q transfer needs A; call set_A first"
+            )
+        if P_AQ is not None:
+            self.P_AQ = P_AQ
+        self.k_AQ = k_AQ
+        self.Q = k_AQ * self.A**self.P_AQ
         return self
 
     # ------------------------------------------------------- erosion law
