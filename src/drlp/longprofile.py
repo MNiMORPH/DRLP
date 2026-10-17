@@ -40,6 +40,18 @@ you:
 Neither mode makes width a dynamic state variable that responds to incision.
 GRLP does that (``set_B``, ``narrow_by_incision``); DRLP does not.
 
+VALIDITY: BASE-LEVEL FALL ONLY.  The stream-power law is purely erosional --
+``E = K Q**m S**n >= 0``, with no deposition term -- so ``dz/dt <= U``
+everywhere and at all times.  On base-level FALL that is the whole point, and
+the model is doing what it is for.  On base-level RISE it has no fluvial
+mechanism to raise the bed at all: the bed can only come up at the rock uplift
+rate ``U``, and with ``U = 0`` it cannot come up by any amount, so the lower
+reach stays drowned indefinitely while the reach above it keeps incising and
+the sediment that incision produces simply disappears.  A real river aggrades.
+Output under a base-level rise is therefore not a prediction, and the
+transport-limited siblings GRLP and SRLP are the models that can represent
+it.
+
 The model can be driven by discharge or by drainage area alone.  Because
 ``K_Q Q**m = (K_Q R**m) A**m``, the two are a rescaling of one another, and
 ``set_K``'s ``basis`` states which one a given ``K`` belongs to.  Area is the
@@ -330,6 +342,11 @@ class LongProfile(object):
 
         A callable ``z_bl(t)`` makes base level a function of model time, which
         is how a base-level history is imposed.
+
+        **Fall only.**  Nothing here forbids a rise, and nothing checks for
+        one, but the stream-power law cannot represent it: ``E >= 0`` with no
+        deposition term, so the bed comes up only at the rock uplift rate and
+        not at all when ``U = 0``.  See the module docstring.
         """
         self._z_bl = z_bl
         return self
