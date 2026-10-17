@@ -1,0 +1,49 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "DRLP: detachment-limited river long profile"
+abstract: >-
+  Evolves a bedrock river long profile under the detachment-limited stream-power
+  law, dz/dt = U - K Q^m S^n, with the implicit outlet-to-upstream sweep of
+  Braun and Willett (2013). Erosion is set locally by the flow rather than by a
+  divergence of sediment flux, so the model is advective where its
+  transport-limited siblings GRLP and SRLP are diffusive: a base-level fall
+  travels upstream as a step that keeps its edge instead of spreading and
+  flattening. n = 1 is closed-form and exact; general n is solved by Brent's
+  method on a dimensionless bracket that is guaranteed by construction. Position
+  reaches discharge through three separate transfer functions - Hack's law for
+  drainage area, a power-law hydrology, and optionally Leopold's downstream
+  hydraulic geometry for width - so each exponent can be asked about on its own.
+  Channel width may be folded into m, the standard treatment, or carried
+  explicitly as unit stream power.
+type: software
+authors:
+  - family-names: Wickert
+    given-names: Andrew D.
+    orcid: "https://orcid.org/0000-0002-9545-3365"
+license: GPL-3.0-or-later
+repository-code: "https://github.com/MNiMORPH/DRLP"
+keywords:
+  - bedrock rivers
+  - stream power
+  - fluvial incision
+  - longitudinal profile
+  - detachment-limited
+  - geomorphology
+  - landscape evolution
+  - numerical modeling
+references:
+  - type: article
+    authors:
+      - family-names: Braun
+        given-names: Jean
+      - family-names: Willett
+        given-names: Sean D.
+    title: >-
+      A very efficient O(n), implicit and parallel method to solve the stream
+      power equation governing fluvial incision and landscape evolution
+    journal: Geomorphology
+    volume: 180-181
+    start: 170
+    end: 179
+    year: 2013
+    doi: 10.1016/j.geomorph.2012.10.008
