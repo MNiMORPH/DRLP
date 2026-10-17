@@ -27,6 +27,12 @@ from drlp import LongProfile
 
 pn.extension()
 
+# Width in CSS pixels the app is laid out for; the embedding page scales the
+# demo above it rather than stretching it. 900 is the deployed convention --
+# hillcreep's panels declare it and every GeomorphOnline exercise page carries
+# data-design-width="900".
+DESIGN_WIDTH = 900
+
 YEAR = 31556926.          # seconds per year
 DT = 1e11                 # ~3 kyr advanced per animation frame
 NX, DX = 60, 500.         # 0.5 to 30 km
@@ -172,4 +178,5 @@ pn.Column(
     pn.Row(run, reset),
     logK, m_sl, n_sl, U_sl, zbl,
     fig,
+    sizing_mode="stretch_width", max_width=DESIGN_WIDTH,
 ).servable(title="DRLP interactive demo")
