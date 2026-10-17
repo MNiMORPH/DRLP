@@ -108,11 +108,31 @@ for f in artesian-embed.js artesian-embed.css; do
         echo "   same     $f  ${after:0:8}"
     fi
 done
+# artesian re-downloads and re-hosts panel and bokeh on every build, which
+# rewrites them with identical contents and different zip timestamps. Verify
+# that is all it is, then put the committed bytes back, so a deploy of one app
+# does not churn 11 MB of shared wheels through git history.
 for f in panel-1.9.4-py3-none-any.whl bokeh-3.9.2-py3-none-any.whl; do
     after="$(sha1sum "$APPS/$f" | cut -c1-40)"
-    [ "$after" = "${BEFORE[$f]}" ] \
-        && echo "   same     $f  (shared wheel untouched)" \
-        || echo "   CHANGED  $f  -- check this was intended"
+    if [ "$after" = "${BEFORE[$f]}" ]; then
+        echo "   same     $f  (shared wheel untouched)"
+        continue
+    fi
+    tmp="$(mktemp -d)"
+    mkdir "$tmp/old" "$tmp/new"
+    ( cd "$SITE" && git show "HEAD:exercises/apps/$f" ) > "$tmp/old.whl"
+    ( cd "$tmp/old" && unzip -qq "$tmp/old.whl" )
+    ( cd "$tmp/new" && unzip -qq "$APPS/$f" )
+    if diff -r "$tmp/old" "$tmp/new" >/dev/null 2>&1; then
+        cp "$APPS/$f" "$tmp/rebuilt-$f"          # recoverable copy first
+        ( cd "$SITE" && git show "HEAD:exercises/apps/$f" ) > "$APPS/$f"
+        echo "   restored $f  (contents identical, zip metadata only;"
+        echo "            rebuilt copy kept at $tmp/rebuilt-$f)"
+    else
+        echo "   CHANGED  $f  -- CONTENTS differ, not just metadata. Stop and look." >&2
+        diff -rq "$tmp/old" "$tmp/new" | head -5 >&2
+        exit 1
+    fi
 done
 
 say "what a cold reader downloads"
@@ -126,4 +146,5 @@ echo "      then dies in the reader's console."
 echo "   2. measure the demo's height at 900 px and set it on the iframe:"
 echo "      it is what a reader looks at while ~60 MB of Pyodide arrives."
 [ "$BUMP" -eq 1 ] && echo "   3. bump the ?v= hashes above in every exercise page."
-echo "   4. git add / commit in the site repo, then push. Publishing is yours."
+echo "   $([ "$BUMP" -eq 1 ] && echo 4 || echo 3). git add / commit in the site repo, then push."
+echo "      Publishing is yours: this script never commits and never pushes."
