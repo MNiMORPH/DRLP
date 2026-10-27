@@ -59,12 +59,12 @@ def make_steady(logK, m, n, U_mmyr, zbl):
 LOGK0, M0, N0, U0, ZBL0 = -9.0, 0.5, 1.0, 0.5, 0.0
 # `sim` (NOT `state`, which collides with panel's global pn.state) holds the
 # evolving model between animation frames.
-sim = {"lp": make_steady(LOGK0, M0, N0, U0, ZBL0), "t": 0.}
+sim = {"lp": make_steady(LOGK0, M0, N0, U0, ZBL0), "t": 0., "z_bl": ZBL0}
 _lp = sim["lp"]
 
 
-def _bl_xy(zbl):
-    return {"x": [_lp.x.min() / 1000., _lp.x.max() / 1000.], "z": [zbl, zbl]}
+def _bl_xy(z_bl):
+    return {"x": [_lp.x.min() / 1000., _lp.x.max() / 1000.], "z": [z_bl, z_bl]}
 
 
 profile = ColumnDataSource(data={"x": _lp.x / 1000., "z": _lp.z})
@@ -106,14 +106,60 @@ _bl_floor = {"z": ZBL0}
 
 
 def on_base_level(event):
+    if _syncing["on"] or bl_lock.value:
+        return                          # the lock is driving it
     if event.new > _bl_floor["z"]:
         _bl_floor["z"] = event.new
         do_reset()                      # a rise is a rebuild, not a forcing
     else:
         _bl_floor["z"] = event.new
+        sim["z_bl"] = event.new
 
 run = pn.widgets.Toggle(name="▶ Run", value=False)
 reset = pn.widgets.Button(name="Set to steady state", button_type="primary")
+
+# Locking base level to the uplift rate puts the outlet on the same rising
+# rock as the rest of the profile, so the WHOLE long profile goes up at U and
+# there is no RELATIVE base-level change left. The river still erodes -- it
+# removes rock at U minus whatever it is actually incising -- but it loses its
+# steady state, because the forcing that held the steady state is gone. A
+# landscape can uplift everywhere and give its rivers nothing to cut into.
+#
+# Unlocked, base level is independent and the only direction is down, because
+# stream power erodes and never deposits.
+bl_lock = pn.widgets.Toggle(name="\U0001f513 Base level free",
+                            button_type="default", width=210)
+_syncing = {"on": False}
+
+
+def toggle_lock(event):
+    if event.new:
+        bl_lock.name = "\U0001f512 Locked to uplift"
+        bl_lock.button_type = "warning"
+        zbl.disabled = True
+    else:
+        bl_lock.name = "\U0001f513 Base level free"
+        bl_lock.button_type = "default"
+        # Hand control back without a jump. The lock may have carried base
+        # level far above the slider's range -- 19 km after 38 Myr at 0.5
+        # mm/yr -- and simply clamping it would drop base level by that much
+        # in one frame. So shift the datum instead: subtract the same constant
+        # from the profile and from base level, which changes nothing physical
+        # (the model has no absolute datum, only relief and slope) and leaves
+        # the river exactly as the lock left it.
+        target = float(min(max(sim["z_bl"], zbl.start), zbl.end))
+        shift = sim["z_bl"] - target
+        sim["lp"].z = sim["lp"].z - shift
+        sim["z_bl"] = target
+        _syncing["on"] = True
+        zbl.value = target
+        _syncing["on"] = False
+        _bl_floor["z"] = target
+        zbl.disabled = False
+        profile.data = {"x": sim["lp"].x / 1000., "z": sim["lp"].z}
+        baselevel.data = _bl_xy(target)
+        _fit_y(sim["lp"])
+
 
 
 def _fit_y(lp):
@@ -147,16 +193,24 @@ def _expand_y(lp):
 def step(event=None):
     """Advance one frame, reading the sliders as live settings."""
     lp = sim["lp"]
+    U = U_sl.value * 1e-3 / YEAR
     lp.set_K(10.**logK.value, basis="Q")
     lp.set_mn(m=m_sl.value, n=n_sl.value)
-    lp.set_uplift_rate(U_sl.value * 1e-3 / YEAR)
-    lp.set_z_bl(zbl.value)
+    lp.set_uplift_rate(U)
+
+    if bl_lock.value:
+        sim["z_bl"] += U * DT           # the outlet rides the rising rock
+    else:
+        sim["z_bl"] = zbl.value
+    lp.set_z_bl(sim["z_bl"])
+
     lp.evolve(nt=1, dt=DT)
     sim["t"] += DT
     profile.data = {"x": lp.x / 1000., "z": lp.z}
-    baselevel.data = _bl_xy(zbl.value)
+    baselevel.data = _bl_xy(sim["z_bl"])
     _expand_y(lp)
-    fig.title.text = "t = %.1f kyr" % (sim["t"] / (1000. * YEAR))
+    fig.title.text = "t = %.1f kyr      base level = %.0f m" % (
+        sim["t"] / (1000. * YEAR), sim["z_bl"])
 
 
 def do_reset(event=None):
@@ -164,10 +218,11 @@ def do_reset(event=None):
     sim["lp"] = make_steady(logK.value, m_sl.value, n_sl.value,
                             U_sl.value, zbl.value)
     sim["t"] = 0.
+    sim["z_bl"] = zbl.value
     lp = sim["lp"]
     profile.data = {"x": lp.x / 1000., "z": lp.z}
-    baselevel.data = _bl_xy(zbl.value)
-    fig.title.text = "t = 0.0 kyr"
+    baselevel.data = _bl_xy(sim["z_bl"])
+    fig.title.text = "t = 0.0 kyr      base level = %.0f m" % sim["z_bl"]
     _bl_floor["z"] = zbl.value          # a rebuild releases the ratchet
     _fit_y(lp)
 
@@ -187,6 +242,7 @@ def toggle_run(event):
 
 
 run.param.watch(toggle_run, "value")
+bl_lock.param.watch(toggle_lock, "value")
 zbl.param.watch(on_base_level, "value")
 reset.on_click(do_reset)
 
@@ -215,7 +271,8 @@ pn.Column(
         "*A*), which leaves the erosion law and base level as the things you "
         "change. The clock reads in thousands of years."),
     pn.Row(run, reset),
-    logK, m_sl, n_sl, U_sl, zbl,
+    logK, m_sl, n_sl, U_sl,
+    pn.Row(zbl, bl_lock, sizing_mode="stretch_width", max_width=DESIGN_WIDTH),
     fig,
     sizing_mode="stretch_width", max_width=DESIGN_WIDTH,
 ).servable(title="DRLP interactive demo")
