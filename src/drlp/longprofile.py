@@ -415,6 +415,40 @@ class LongProfile(object):
         """Downstream slope at each node, positive downstream."""
         return -np.diff(np.append(self.z, self.z_bl)) / self.dx
 
+    def elevation_limits(self, z_bl_floor=None, pad_frac=0.08):
+        """Elevation axis limits [m] that cannot clip the profile.
+
+        Returns ``(lo, hi)``.  ``z_bl_floor`` is the lowest base level the
+        caller can still reach without rebuilding the profile -- a slider's
+        minimum, say.  Passing it reserves room for a drop that has not
+        happened yet, so the profile and the base-level line both stay in view
+        when it does.
+
+        The lower limit is safe for a reason rather than by margin: **no node
+        ever passes below the thing it drains into.**  The implicit update
+
+            z_new = (z_old + dt U + c z_r) / (1 + c)
+
+        is a weighted average of the node's no-erosion elevation and its
+        already-updated receiver, with ``c > 0``, so ``z_new`` lies between
+        them whenever ``z_old + dt U >= z_r``; and when it does not, the node
+        takes uplift only and does not move down at all.  By induction from
+        the ghost node, every node satisfies ``z >= z_bl`` at every step.  So
+        the deepest the profile can reach is the deepest base level allowed.
+
+        There is no matching bound above: uplift raises the profile without
+        limit, at up to ``U`` per unit time.  A caller animating the model
+        should therefore EXPAND these limits when the profile grows rather
+        than trusting one call, which is what ``pad_frac`` buys time for.
+        """
+        lows = [float(self.z.min()), float(self.z_bl)]
+        if z_bl_floor is not None:
+            lows.append(float(z_bl_floor))
+        lo = min(lows)
+        hi = max(float(self.z.max()), float(self.z_bl))
+        pad = pad_frac * max(hi - lo, 1.0)
+        return lo - pad, hi + pad
+
     def steady_state_slope(self):
         """``S = (U / (K Q**m))**(1/n)``, the closed-form steady slope."""
         return (self.U / (self.K * self.driver**self.m)) ** (1.0 / self.n)
