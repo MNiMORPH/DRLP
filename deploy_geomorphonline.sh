@@ -9,11 +9,21 @@
 # recording a failure that has actually happened there. Read it before changing
 # this script.
 #
-#   usage:  ./deploy_geomorphonline.sh [path-to-GeomorphOnline.github.io]
+#   usage:  ./deploy_geomorphonline.sh [--bump] [path-to-GeomorphOnline.github.io]
+#
+# --bump increments the dev version first, which is what makes iterating on a
+# live demo work at all. A rebuilt wheel keeps its filename, GitHub Pages
+# serves wheels with max-age=600, and micropip will not take a ?v= query on a
+# wheel URL -- so without a new filename a reader who loaded the page in the
+# last ten minutes reinstalls the OLD wheel and runs the old model, with
+# nothing anywhere to say so. The version is the cache-buster, not a release
+# ceremony: bump it freely.
 #
 set -euo pipefail
 
 DRLP="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BUMP=0
+if [ "${1:-}" = "--bump" ]; then BUMP=1; shift; fi
 SITE="${1:-$HOME/models/GeomorphOnline.github.io}"
 APPS="$SITE/exercises/apps"
 APP="interactive_demo/drlp_panel.py"
@@ -23,6 +33,35 @@ APP="interactive_demo/drlp_panel.py"
 say() { printf '\n== %s\n' "$*"; }
 
 # ---------------------------------------------------------------- provenance
+if [ "$BUMP" -eq 1 ]; then
+    say "bump"
+    python3 - <<'PYBUMP'
+import re, pathlib
+p = pathlib.Path("src/drlp/_version.py")
+s = p.read_text()
+m = re.search(r'__version__ = "(.*?)"', s)
+old = m.group(1)
+dev = re.match(r"(.*\.dev)(\d+)$", old)
+if dev:
+    new = f"{dev.group(1)}{int(dev.group(2)) + 1}"
+else:
+    new = old + ".dev1"
+p.write_text(s.replace(f'"{old}"', f'"{new}"'))
+print(f"   {old} -> {new}")
+PYBUMP
+    git add src/drlp/_version.py
+    git commit -q -m "Bump version for a GeomorphOnline redeploy
+
+A rebuilt wheel keeps its filename and GitHub Pages serves wheels with
+max-age=600, so without a new filename a reader who has loaded the page in
+the last ten minutes reinstalls the old wheel and silently runs the old
+model. The version is the cache-buster.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_011qNGd13MDBX6c4DdmdPFcH"
+    echo "   committed"
+fi
+
 say "provenance"
 cd "$DRLP"
 DIRTY="$(git status --porcelain | wc -l)"
