@@ -137,3 +137,96 @@ def test_raising_uplift_mid_run_is_what_breaks_the_upper_limit():
     lo, _ = lp.elevation_limits(z_bl_floor=-400.0)
     assert np.all(lp.z >= lp.z_bl)
     assert lp.z.min() >= lo
+
+
+# ----------------------------------------------- relax_limits, the tracker
+
+from drlp.longprofile import relax_limits
+
+
+def test_outward_is_immediate_so_nothing_is_ever_clipped():
+    # The invariant that matters: if the target contains the data, so does the
+    # result, on the very first call. No amount of relaxation delay is allowed
+    # to leave the subject outside its own axis.
+    cur = (0.0, 100.0)
+    for target in ((-500.0, 100.0), (0.0, 900.0), (-500.0, 900.0)):
+        lo, hi = relax_limits(cur, target, relax_frac=0.05)
+        assert lo <= target[0] and hi >= target[1]
+
+
+def test_inward_is_gradual_and_converges():
+    # Tightening must not snap, and must not stall short of the fit.
+    cur, target = (-1000.0, 1000.0), (-10.0, 10.0)
+    frac = 0.05
+    lo, hi = cur
+    first = relax_limits((lo, hi), target, frac)
+    assert first[0] > lo and first[1] < hi          # moved inward
+    assert first[0] < target[0] and first[1] > target[1]   # but not all the way
+    # Convergence is geometric at (1 - frac) per call, so assert the rate
+    # rather than an iteration count: a count is a magic number and this is
+    # the actual property. 990 m of gap at 0.95 per call needs 404 calls to
+    # reach 1e-6, which is why an earlier draft of this test failed at 400.
+    lo, hi = cur
+    gap0 = target[0] - lo
+    for n in (1, 10, 100):
+        lo, hi = cur
+        for _ in range(n):
+            lo, hi = relax_limits((lo, hi), target, frac)
+        assert (target[0] - lo) == pytest.approx(gap0 * (1 - frac) ** n, rel=1e-9)
+
+    lo, hi = cur
+    for _ in range(600):
+        lo, hi = relax_limits((lo, hi), target, frac)
+    assert lo == pytest.approx(target[0], abs=1e-9)
+    assert hi == pytest.approx(target[1], abs=1e-9)
+
+
+def test_monotone_and_never_overshoots_while_tightening():
+    cur, target = (-1000.0, 1000.0), (-10.0, 10.0)
+    lo, hi = cur
+    for _ in range(500):
+        n_lo, n_hi = relax_limits((lo, hi), target, 0.05)
+        assert n_lo >= lo - 1e-12 and n_lo <= target[0] + 1e-9
+        assert n_hi <= hi + 1e-12 and n_hi >= target[1] - 1e-9
+        lo, hi = n_lo, n_hi
+
+
+def test_the_two_degenerate_rates():
+    cur, target = (-1000.0, 1000.0), (-10.0, 10.0)
+    assert relax_limits(cur, target, 0.0) == cur            # never tightens
+    assert relax_limits(cur, target, 1.0) == target         # snaps to the fit
+    # but even at rate 0, outward still moves at once
+    assert relax_limits(cur, (-5000.0, 1000.0), 0.0)[0] == -5000.0
+
+
+def test_relax_frac_is_validated():
+    with pytest.raises(ValueError, match="relax_frac"):
+        relax_limits((0.0, 1.0), (0.0, 1.0), 1.5)
+    with pytest.raises(ValueError, match="relax_frac"):
+        relax_limits((0.0, 1.0), (0.0, 1.0), -0.1)
+
+
+def test_tracking_a_live_model_never_clips_and_recovers_the_view():
+    # The end-to-end property, against the model rather than numbers: drive
+    # uplift up and then down, tracking every step, and require (1) the
+    # profile and base level are inside the axis at every single step, and
+    # (2) once uplift falls the axis tightens back, which is what the
+    # expand-only rule could not do.
+    lp = _lp()
+    limits = lp.elevation_limits()
+    frac = 0.05
+
+    def fraction_used():
+        lo, hi = limits
+        return (lp.z.max() - min(lp.z.min(), lp.z_bl)) / (hi - lo)
+
+    for U_rate, n_steps in ((2e-3 / YEAR, 1500), (0.1e-3 / YEAR, 4000)):
+        lp.set_uplift_rate(U_rate)
+        for _ in range(n_steps):
+            lp.evolve(nt=1, dt=1e11)
+            limits = relax_limits(limits, lp.elevation_limits(), frac)
+            assert limits[0] <= lp.z.min() and limits[1] >= lp.z.max()
+            assert limits[0] <= lp.z_bl
+
+    # after uplift drops, the view is tight again rather than stranded
+    assert fraction_used() > 0.5, f"view never recovered: {fraction_used():.3f}"

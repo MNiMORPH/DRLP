@@ -24,6 +24,7 @@ from bokeh.plotting import figure
 from bokeh.models import ColumnDataSource
 
 from drlp import LongProfile
+from drlp.longprofile import relax_limits
 
 pn.extension()
 
@@ -35,6 +36,11 @@ DESIGN_WIDTH = 900
 
 YEAR = 31556926.          # seconds per year
 DT = 1e11                 # ~3 kyr advanced per animation frame
+# The elevation axis tightens with a time constant rather than a magic rate:
+# 1 - exp(-frame/TAU) of the remaining gap per frame, at ~30 fps. Half a
+# second reads as the view following the river rather than chasing it.
+TAU_Y = 0.5               # seconds
+RELAX_Y = 1.0 - np.exp(-0.033 / TAU_Y)
 NX, DX = 60, 500.         # 0.5 to 30 km
 K_XA, P_XA = 1.0, 7 / 4.  # Hack's law:  A = k_xA x**P_xA
 RUNOFF = 1e-8             # m/s, about 315 mm/yr
@@ -163,31 +169,31 @@ def toggle_lock(event):
 
 
 def _fit_y(lp):
-    """Set the elevation axis from scratch, reserving room for a full drop.
+    """Fit the elevation axis to the profile, tightly.
 
     Steady relief spans four orders of magnitude across these sliders -- n
     changes how hard the profile answers a given U/K -- so no fixed range
-    works and the axis has to be computed. Passing the base-level slider's
-    minimum reserves room for a drop the reader has not made yet, which is
-    what keeps the profile and the base-level line in view when they do.
+    works and the axis has to be computed. It is fitted TIGHTLY rather than
+    reserving room for a base-level drop: the axis now follows the drop as it
+    happens, so holding empty space for one would only waste the plot. The
+    reserved version gave the river 44% of the height at these defaults.
     """
-    lo, hi = lp.elevation_limits(z_bl_floor=zbl.start)
+    lo, hi = lp.elevation_limits()
     fig.y_range.start, fig.y_range.end = lo, hi
 
 
-def _expand_y(lp):
-    """Grow the axis if the profile has outgrown it, and never shrink it.
+def _track_y(lp):
+    """Move the axis toward a tight fit: outward at once, inward gradually.
 
-    Raising uplift mid-run moves the steady state the profile is chasing, so
-    it can outgrow an axis set at reset. Expanding keeps the plot honest --
-    a clipped profile is indistinguishable from one that stopped moving --
-    and never shrinking keeps it from jittering frame to frame.
+    Outward immediately, because a profile that has left the frame looks
+    exactly like one that stopped moving. Inward over about half a second, so
+    the view tightens back after a transient instead of being stranded. The
+    expand-only rule it replaces could not tighten at all: after uplift was
+    raised to 2 mm/yr and lowered to 0.1, the river occupied 3.5% of the
+    plot's height and stayed there.
     """
-    lo, hi = lp.elevation_limits(z_bl_floor=zbl.start)
-    if lo < fig.y_range.start:
-        fig.y_range.start = lo
-    if hi > fig.y_range.end:
-        fig.y_range.end = hi
+    fig.y_range.start, fig.y_range.end = relax_limits(
+        (fig.y_range.start, fig.y_range.end), lp.elevation_limits(), RELAX_Y)
 
 
 def step(event=None):
@@ -208,7 +214,7 @@ def step(event=None):
     sim["t"] += DT
     profile.data = {"x": lp.x / 1000., "z": lp.z}
     baselevel.data = _bl_xy(sim["z_bl"])
-    _expand_y(lp)
+    _track_y(lp)
     fig.title.text = "t = %.1f kyr      base level = %.0f m" % (
         sim["t"] / (1000. * YEAR), sim["z_bl"])
 

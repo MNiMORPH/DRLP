@@ -66,6 +66,30 @@ import numpy as np
 from .incision import step
 
 
+def relax_limits(current, target, relax_frac):
+    """Move axis limits toward ``target``: outward at once, inward gradually.
+
+    Returns ``(lo, hi)``.  The asymmetry is the whole point.  **Outward is
+    immediate**, because a plot that clips the thing it is plotting is worse
+    than no plot: a profile that has left the frame looks exactly like one
+    that stopped moving.  **Inward is gradual**, at ``relax_frac`` of the
+    remaining gap per call, because a view that snaps to a tight fit every
+    frame jitters, and one that never tightens strands the subject in a
+    corner of its own axis.
+
+    ``relax_frac`` of 0 never tightens and 1 snaps straight to the fit.  A
+    caller animating at a fixed frame rate can set it from a time constant:
+    ``1 - exp(-dt_frame / tau)``.
+    """
+    lo, hi = (float(v) for v in current)
+    t_lo, t_hi = (float(v) for v in target)
+    if not 0.0 <= relax_frac <= 1.0:
+        raise ValueError(f"relax_frac must be in [0, 1]; got {relax_frac}")
+    new_lo = t_lo if t_lo < lo else lo + relax_frac * (t_lo - lo)
+    new_hi = t_hi if t_hi > hi else hi + relax_frac * (t_hi - hi)
+    return new_lo, new_hi
+
+
 class LongProfile(object):
     """A detachment-limited river long profile.
 
