@@ -54,7 +54,9 @@ def make_steady(logK, m, n, U_mmyr, zbl):
     return lp
 
 
-LOGK0, M0, N0, U0, ZBL0 = -8.5, 0.5, 1.0, 0.3, 0.0
+# A mountain river rather than a hill: about 2 km of relief at these
+# settings, against 390 m at the previous defaults.
+LOGK0, M0, N0, U0, ZBL0 = -9.0, 0.5, 1.0, 0.5, 0.0
 # `sim` (NOT `state`, which collides with panel's global pn.state) holds the
 # evolving model between animation frames.
 sim = {"lp": make_steady(LOGK0, M0, N0, U0, ZBL0), "t": 0.}
@@ -88,24 +90,58 @@ n_sl = pn.widgets.FloatSlider(name="Slope exponent  n",
 U_sl = pn.widgets.FloatSlider(name="Rock uplift rate  U  [mm/yr]",
                               start=0.0, end=2.0, step=0.1, value=U0,
                               format="0.0")
-zbl = pn.widgets.FloatSlider(name="Base level  [m]",
-                             start=-400, end=400, step=20, value=ZBL0)
+# Base level falls, and never rises on a river that already exists: stream
+# power erodes and never deposits, so nothing here can bring a drowned bed
+# back up.
+#
+# Lowering it is a forcing applied to the running profile. RAISING it rebuilds
+# the river at the new base level instead, which is a different initial
+# condition rather than an aggradation the model cannot perform. Refusing the
+# drag outright was the first attempt and it was worse: once the slider
+# reached its floor, nothing could ever bring it back and the control was
+# one-way for the rest of the session.
+zbl = pn.widgets.FloatSlider(name="Base level  [m]  (lower to force, raise to rebuild)",
+                             start=-2000, end=0, step=20, value=ZBL0)
+_bl_floor = {"z": ZBL0}
+
+
+def on_base_level(event):
+    if event.new > _bl_floor["z"]:
+        _bl_floor["z"] = event.new
+        do_reset()                      # a rise is a rebuild, not a forcing
+    else:
+        _bl_floor["z"] = event.new
 
 run = pn.widgets.Toggle(name="▶ Run", value=False)
 reset = pn.widgets.Button(name="Set to steady state", button_type="primary")
 
 
-def _rescale_y(z, zbl_value):
-    """Fit the axis to the profile, with headroom.
+def _fit_y(lp):
+    """Set the elevation axis from scratch, reserving room for a full drop.
 
-    The steady-state relief spans orders of magnitude across these sliders --
-    n changes how hard the profile answers a given U/K -- so a fixed range
-    that suits one corner hides another. Rescale when the profile is reset,
-    and hold the range steady while it runs.
+    Steady relief spans four orders of magnitude across these sliders -- n
+    changes how hard the profile answers a given U/K -- so no fixed range
+    works and the axis has to be computed. Passing the base-level slider's
+    minimum reserves room for a drop the reader has not made yet, which is
+    what keeps the profile and the base-level line in view when they do.
     """
-    lo, hi = min(z.min(), zbl_value), max(z.max(), zbl_value)
-    pad = 0.08 * max(hi - lo, 1.0)
-    fig.y_range.start, fig.y_range.end = lo - pad, hi + pad
+    lo, hi = lp.elevation_limits(z_bl_floor=zbl.start)
+    fig.y_range.start, fig.y_range.end = lo, hi
+
+
+def _expand_y(lp):
+    """Grow the axis if the profile has outgrown it, and never shrink it.
+
+    Raising uplift mid-run moves the steady state the profile is chasing, so
+    it can outgrow an axis set at reset. Expanding keeps the plot honest --
+    a clipped profile is indistinguishable from one that stopped moving --
+    and never shrinking keeps it from jittering frame to frame.
+    """
+    lo, hi = lp.elevation_limits(z_bl_floor=zbl.start)
+    if lo < fig.y_range.start:
+        fig.y_range.start = lo
+    if hi > fig.y_range.end:
+        fig.y_range.end = hi
 
 
 def step(event=None):
@@ -119,6 +155,7 @@ def step(event=None):
     sim["t"] += DT
     profile.data = {"x": lp.x / 1000., "z": lp.z}
     baselevel.data = _bl_xy(zbl.value)
+    _expand_y(lp)
     fig.title.text = "t = %.1f kyr" % (sim["t"] / (1000. * YEAR))
 
 
@@ -131,7 +168,8 @@ def do_reset(event=None):
     profile.data = {"x": lp.x / 1000., "z": lp.z}
     baselevel.data = _bl_xy(zbl.value)
     fig.title.text = "t = 0.0 kyr"
-    _rescale_y(lp.z, zbl.value)
+    _bl_floor["z"] = zbl.value          # a rebuild releases the ratchet
+    _fit_y(lp)
 
 
 # A single play/pause button drives the animation via a periodic callback (the
@@ -149,9 +187,10 @@ def toggle_run(event):
 
 
 run.param.watch(toggle_run, "value")
+zbl.param.watch(on_base_level, "value")
 reset.on_click(do_reset)
 
-_rescale_y(_lp.z, ZBL0)
+_fit_y(_lp)
 
 pn.Column(
     pn.pane.Markdown(
