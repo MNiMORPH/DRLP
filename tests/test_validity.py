@@ -3,7 +3,7 @@ Where DRLP stops being a model of a river.
 
 The stream-power law is purely erosional, so ``dz/dt <= U`` everywhere and at
 all times. These tests record what the model does under a base-level RISE, so
-that the behaviour is pinned rather than discovered later and mistaken for a
+that the behavior is pinned rather than discovered later and mistaken for a
 prediction.
 """
 
@@ -64,7 +64,7 @@ def test_with_no_uplift_the_bed_cannot_rise_at_all():
 
 def test_a_drowned_node_freezes_while_the_reach_above_keeps_incising():
     # The guard acts on the node that sees the risen base level. Nodes above
-    # it drain to their own neighbours and go on eroding, and the sediment
+    # it drain to their own neighbors and go on eroding, and the sediment
     # they produce is not deposited anywhere -- there is no deposition term.
     x = np.array([0.0, 500.0, 1000.0])
     z = np.array([30.0, 20.0, 10.0])

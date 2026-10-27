@@ -168,7 +168,7 @@ def step(x, z, Q, K, m, n, U, dt, x_bl, z_bl):
 
         # The no-erosion elevation and the relief that would exist if nothing
         # eroded this step.  D0 <= 0 means the node sits at or below its
-        # receiver: a flat, a filled depression, or a numerical artefact.
+        # receiver: a flat, a filled depression, or a numerical artifact.
         # There is no erosion to do, and S**n must not be evaluated on a
         # negative slope -- for fractional n it is not real.
         z_no_erosion = z[i] + dt * U[i]

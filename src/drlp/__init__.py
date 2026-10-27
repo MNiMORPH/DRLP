@@ -12,7 +12,7 @@ step instead of spreading and flattening.
 SI units throughout; time in seconds.
 
 The name states the assumption the model actually makes.  The stream-power law
-is a parameterisation of detachment-limited incision and does not know whether
+is a parameterization of detachment-limited incision and does not know whether
 the bed is granite or shale, so the "bedrock" name is reserved for a future
 mechanistic model (abrasion, plucking, tools and cover, block size).
 """

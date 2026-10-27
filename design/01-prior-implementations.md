@@ -34,7 +34,7 @@ implementations do not have. Reasons below.
 
 Four things worth having:
 
-- **Tolerance `1.d-3`**, absolute, in metres, compared against
+- **Tolerance `1.d-3`**, absolute, in meters, compared against
   `errp = abs(hn - h(ijk))` - the Newton **step size** in elevation.
 - **No iteration cap.** The `do while` has no counter. The surrounding
   Gauss-Seidel loop is capped (`nGSStreamPowerLaw .lt. nGSStreamPowerLawMax-1`),
@@ -79,7 +79,7 @@ supported. The non-linear branch:
 
 **So the two Fastscapes agree on the number and disagree on what it measures:**
 1e-3 is a step size in the Fortran and a residual in the C++. Both are
-dimensional - metres - and neither caps its iterations.
+dimensional - meters - and neither caps its iterations.
 
 ## 3. Landlab - Brent, and a better-posed problem
 
@@ -174,7 +174,7 @@ Adopt **Landlab's formulation** - solve for `x` on `[0, 1]`, Brent, uplift
 folded into `z_old`. Two notes on the parameters, which are Andy's to set:
 
 - **"Follow Fastscape" transfers only partly, and I would not take its
-  tolerance.** 1e-3 in metres is dimensional and loose, it means different
+  tolerance.** 1e-3 in meters is dimensional and loose, it means different
   quantities in the two Fastscape codes, and the handoff asked for a tolerance
   *scaled by local relief* - which is what `x` already is. Proposal: scipy's
   **public** `brentq` defaults, `xtol = 2e-12` and `rtol = 4*eps`, reached

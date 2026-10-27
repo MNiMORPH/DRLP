@@ -19,7 +19,7 @@ transport-limited and diffusive. Run DRLP next to GRLP on the same base-level
 drop and the contrast is the lesson.
 
 The name states the assumption the model makes. The stream-power law is a
-parameterisation of detachment-limited incision, and it does not know whether
+parameterization of detachment-limited incision, and it does not know whether
 the bed is granite or shale, so `BRLP` is deliberately unused: the "bedrock"
 name is reserved for a mechanistic model of abrasion, plucking, tools and
 cover, and block size.
@@ -150,7 +150,7 @@ bundles both numpy and scipy, so the general-`n` root-find works in the browser.
   GRLP or SRLP for that.
 - **No erosion threshold.** Stream power is `rho g Q S`, and the stream-power
   law is `K A^m S^n`. Adding a threshold makes it an excess-stress model, which
-  is a different parameterisation; a critical shear stress belongs in the
+  is a different parameterization; a critical shear stress belongs in the
   mechanistic model, where it follows from grain and block size instead of being
   fitted.
 - **No dynamic width.** Width never responds to incision in either mode. GRLP
@@ -191,7 +191,7 @@ fastscapelib-fortran, fastscapelib and Landlab each do, read from source.
 ## Examples
 
 ```sh
-python examples/base_level_drop.py      # the transient, and the travelling front
+python examples/base_level_drop.py      # the transient, and the traveling front
 python examples/two_faults.py           # stepped uplift, and why S is not U
 python examples/width_both_ways.py      # the two width treatments, and where they part
 ```

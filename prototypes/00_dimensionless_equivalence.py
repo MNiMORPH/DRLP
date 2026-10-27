@@ -35,8 +35,8 @@ construction, and cannot do this.
 
 The draws below add an absolute elevation z_r, which HANDOFF.md's stated
 ranges (n, K, Q, m, dx, dt) did not include. That is where the failure lives,
-and |z_r| >> D0 is the ordinary case for a real profile: metres of relief
-between nodes, hundreds or thousands of metres above datum.
+and |z_r| >> D0 is the ordinary case for a real profile: meters of relief
+between nodes, hundreds or thousands of meters above datum.
 """
 import numpy as np
 from scipy.optimize import brentq

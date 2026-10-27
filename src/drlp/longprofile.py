@@ -22,7 +22,7 @@ rule ``Q = R A`` is the LINEAR special case of the second, ``P_AQ = 1``, and
 ``set_Q(R=...)`` says so rather than leaving ``P_AQ`` set and ignored.
 
 GRLP's ``q_R`` (m/hr, with an ``A_R`` saturation area) is a different
-parameterisation of the same transfer and is not implemented here.
+parameterization of the same transfer and is not implemented here.
 
 CHANNEL WIDTH can be handled either way, and the model does not choose for
 you:

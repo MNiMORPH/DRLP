@@ -58,7 +58,7 @@ def test_Q_to_B_transfer_needs_Q():
 def test_power_law_width_reduces_exactly_to_the_implicit_form():
     # The reason explicit width is only SEMI-independent. With
     # B = k_QB Q**P_QB, unit stream power (Q/B)**m is Q**(m(1-P_QB)) with the
-    # width coefficient absorbed into K. So the two parameterisations are the
+    # width coefficient absorbed into K. So the two parameterizations are the
     # same model and k_QB is not identifiable from a profile.
     m_u, n, k_QB, P_QB, K_u = 1.0, 1.0, 12.0, 0.5, 2e-5
 
@@ -130,7 +130,7 @@ def test_non_power_law_width_is_a_model_the_implicit_form_cannot_express():
 
 
 def test_width_is_an_inspectable_output():
-    # Even where it is only a reparameterisation, the explicit route makes
+    # Even where it is only a reparameterization, the explicit route makes
     # width something you can look at rather than an assumption inside m.
     lp = _base().set_B(k_QB=8.0)
     assert lp.B.shape == lp.x.shape

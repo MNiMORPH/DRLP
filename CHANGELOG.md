@@ -9,7 +9,7 @@ All notable changes to this project are documented here, following
 Nothing released yet. The model runs, 93 tests pass, and the browser demo
 compiles and runs headlessly through every slider corner. No browser has yet
 rendered the compiled page, and the analysis tools that make a long-profile
-model usable on real data - chi, slope-area, and the normalised steepness index
+model usable on real data - chi, slope-area, and the normalized steepness index
 `k_sn` - are not written.
 
 ### Added

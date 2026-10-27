@@ -96,7 +96,7 @@ def test_knickpoint_migrates_upstream_at_the_analytic_celerity():
     # upstream is a SMALLER x
     assert x1 < x0, f"knickpoint did not migrate upstream: {x0} -> {x1}"
 
-    # and it moved by C * elapsed time. The measured position is quantised to
+    # and it moved by C * elapsed time. The measured position is quantized to
     # the node spacing, so the tolerance is 1.5 dx -- set by the grid, not
     # tuned to pass.
     expected = C * dt * n_steps
@@ -106,7 +106,7 @@ def test_knickpoint_migrates_upstream_at_the_analytic_celerity():
 
     # it is locally steeper than the steady slope upstream of it: direction
     # only. The scheme is first-order upwind and therefore numerically
-    # diffusive, so the step's HEIGHT on a given grid is a discretisation
+    # diffusive, so the step's HEIGHT on a given grid is a discretization
     # property, not physics -- see test_step_sharpens_under_grid_refinement.
     assert S.max() > (U / (K * Q**M))
 
@@ -196,7 +196,7 @@ def test_degenerate_inputs_return_finite_elevations():
     # ghost node far ABOVE the profile. The mechanism acts on the one node
     # that sees the ghost -- the downstream-most -- which has nothing to erode
     # into and so takes uplift only. Every node upstream still drains to its
-    # own (already updated) neighbour and erodes normally, so the assertion
+    # own (already updated) neighbor and erodes normally, so the assertion
     # belongs on the last node alone.
     z_new = step(x, z, Q, K, M, 1.0, U, 1e10, x_bl, 1e4)
     assert np.all(np.isfinite(z_new))
