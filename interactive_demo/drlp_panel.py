@@ -21,7 +21,7 @@ layout. The physics is the contrast: GRLP is diffusive, DRLP is advective.
 import numpy as np
 import panel as pn
 from bokeh.plotting import figure
-from bokeh.models import ColumnDataSource
+from bokeh.models import ColumnDataSource, Range1d
 
 from drlp import LongProfile
 from drlp.longprofile import relax_limits
@@ -76,13 +76,32 @@ def _bl_xy(z_bl):
 profile = ColumnDataSource(data={"x": _lp.x / 1000., "z": _lp.z})
 baselevel = ColumnDataSource(data=_bl_xy(ZBL0))
 
-fig = figure(height=380, width=680, title="t = 0.0 kyr",
+# 880 px against a 900 px design width, as hillcreep's panels are: the plot
+# should fill the frame it is scaled inside, not sit in the middle of it.
+fig = figure(height=420, width=880, title="t = 0.0 kyr",
              x_axis_label="Downstream distance [km]",
              y_axis_label="Elevation [m]")
+
+# BOTH ranges are explicit Range1d, and that is load-bearing. figure() hands
+# back a DataRange1d, which auto-ranges to the renderers' data IN THE BROWSER
+# with range_padding = 0.1. Assignments to its start and end from Python are
+# hints the client recomputes around rather than limits that govern, so a
+# per-frame assignment fights the auto-range instead of driving the axis --
+# and the axis then does not follow the profile. hillcreep replaces its ranges
+# for the same reason ("replaced on every redraw").
+#
+# This also defeated the headless tests of the tracking: reading back
+# fig.y_range.start returns whatever Python last wrote to it, whichever class
+# it is, so those checks asserted on my own assignment rather than on what
+# renders. The structural assertion is in tests/test_panel_axis.py.
+fig.x_range = Range1d(0.0, 1.0)      # set from the grid below
+fig.y_range = Range1d(0.0, 1.0)      # replaced on every redraw
 fig.line("x", "z", source=profile, line_width=3)
 fig.line("x", "z", source=baselevel, line_width=1, line_dash="dashed",
          color="gray", legend_label="base level")
 fig.legend.location = "top_right"
+fig.x_range.start = float(_lp.x.min() / 1000.)
+fig.x_range.end = float(_lp.x_bl / 1000.)
 
 logK = pn.widgets.FloatSlider(
     name="Erodibility  log₁₀ K  (units depend on m and n)",
@@ -121,8 +140,8 @@ def on_base_level(event):
         _bl_floor["z"] = event.new
         sim["z_bl"] = event.new
 
-run = pn.widgets.Toggle(name="▶ Run", value=False)
-reset = pn.widgets.Button(name="Set to steady state", button_type="primary")
+run = pn.widgets.Toggle(label="▶ Run", value=False)
+reset = pn.widgets.Button(label="Set to steady state", button_type="primary")
 
 # Locking base level to the uplift rate puts the outlet on the same rising
 # rock as the rest of the profile, so the WHOLE long profile goes up at U and
@@ -133,18 +152,18 @@ reset = pn.widgets.Button(name="Set to steady state", button_type="primary")
 #
 # Unlocked, base level is independent and the only direction is down, because
 # stream power erodes and never deposits.
-bl_lock = pn.widgets.Toggle(name="\U0001f513 Base level free",
+bl_lock = pn.widgets.Toggle(label="\U0001f513 Base level free",
                             button_type="default", width=210)
 _syncing = {"on": False}
 
 
 def toggle_lock(event):
     if event.new:
-        bl_lock.name = "\U0001f512 Locked to uplift"
+        bl_lock.label = "\U0001f512 Locked to uplift"
         bl_lock.button_type = "warning"
         zbl.disabled = True
     else:
-        bl_lock.name = "\U0001f513 Base level free"
+        bl_lock.label = "\U0001f513 Base level free"
         bl_lock.button_type = "default"
         # Hand control back without a jump. The lock may have carried base
         # level far above the slider's range -- 19 km after 38 Myr at 0.5
@@ -241,10 +260,10 @@ _ticker = pn.state.add_periodic_callback(step, period=33, start=False)  # ~30 fp
 def toggle_run(event):
     if event.new:
         _ticker.start()
-        run.name = "⏸ Pause"
+        run.label = "⏸ Pause"
     else:
         _ticker.stop()
-        run.name = "▶ Run"
+        run.label = "▶ Run"
 
 
 run.param.watch(toggle_run, "value")
