@@ -5,3 +5,7 @@ build/
 dist/
 .pytest_cache/
 _artesian_build/
+
+# The build handoff stays local: it names a third party and critiques
+# their unpublished code, which reads very differently in a public repo.
+HANDOFF.md

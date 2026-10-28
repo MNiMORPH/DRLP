@@ -199,6 +199,16 @@ python examples/width_both_ways.py      # the two width treatments, and where th
 `base_level_drop.py` takes `--plot` for a figure (needs
 `pip install -e ".[figures]"`).
 
+## A note on the handoff
+
+Several files here cite `HANDOFF.md`, the build brief this model was written
+from. It is deliberately not published: it names a third party and critiques
+their unpublished code, which reads very differently in a public repository
+than in a private folder. The physics and numerics it specified are all
+restated in this README and in `design/01-prior-implementations.md`, so
+nothing load-bearing is missing. `HANDOFF-AMENDMENT-1.md` is published,
+because it carries only the decision that DRLP is one-dimensional.
+
 ## Layout
 
 ```
