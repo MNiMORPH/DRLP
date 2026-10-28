@@ -11,6 +11,11 @@
 #
 #   usage:  ./deploy_geomorphonline.sh [--bump] [path-to-GeomorphOnline.github.io]
 #
+# NOTE for anyone writing commit messages around this script: pass them with
+# `git commit -F <file>`, never `-m "..."`. A double-quoted -m runs backticks
+# as command substitution, which silently ate the word it was quoting out of a
+# commit message on 2026-10-28 ("takes a  span").
+#
 # --bump increments the dev version first, which is what makes iterating on a
 # live demo work at all. A rebuilt wheel keeps its filename, GitHub Pages
 # serves wheels with max-age=600, and micropip will not take a ?v= query on a
