@@ -66,28 +66,42 @@ import numpy as np
 from .incision import step
 
 
-def relax_limits(current, target, relax_frac):
-    """Move axis limits toward ``target``: outward at once, inward gradually.
+def relax_limits(current, target, relax_frac, contain=None):
+    """Ease axis limits toward ``target``, and never clip ``contain``.
 
-    Returns ``(lo, hi)``.  The asymmetry is the whole point.  **Outward is
-    immediate**, because a plot that clips the thing it is plotting is worse
-    than no plot: a profile that has left the frame looks exactly like one
-    that stopped moving.  **Inward is gradual**, at ``relax_frac`` of the
-    remaining gap per call, because a view that snaps to a tight fit every
-    frame jitters, and one that never tightens strands the subject in a
-    corner of its own axis.
-
-    ``relax_frac`` of 0 never tightens and 1 snaps straight to the fit.  A
-    caller animating at a fixed frame rate can set it from a time constant:
+    Returns ``(lo, hi)``.  Both edges move by ``relax_frac`` of the remaining
+    gap per call, in either direction, so the limits visibly **evolve through
+    time** rather than snapping to a fit and sitting there.  A caller
+    animating at a fixed frame rate sets the rate from a time constant:
     ``1 - exp(-dt_frame / tau)``.
+
+    ``contain`` is the one thing easing must not cost: pass the span that has
+    to stay visible -- the profile's own ``(min, max)`` -- and the result is
+    widened to include it however far behind the easing has fallen.  So a
+    large, sudden change pans the view over the following frames instead of
+    jumping, while the subject itself never leaves the frame.
+
+    Easing symmetrically and containing only the profile is deliberate.  An
+    earlier version snapped outward immediately so that base level could
+    never be off-screen either, which meant a base-level drop widened the
+    axis to its final extent in a single frame: it changed on 44 of the 300
+    frames after a drop, and read as a jump followed by a frozen view.
+    Letting the base-level marker pan into place over half a second costs
+    nothing and is what makes the motion legible.
     """
     lo, hi = (float(v) for v in current)
     t_lo, t_hi = (float(v) for v in target)
     if not 0.0 <= relax_frac <= 1.0:
         raise ValueError(f"relax_frac must be in [0, 1]; got {relax_frac}")
-    new_lo = t_lo if t_lo < lo else lo + relax_frac * (t_lo - lo)
-    new_hi = t_hi if t_hi > hi else hi + relax_frac * (t_hi - hi)
-    return new_lo, new_hi
+
+    lo += relax_frac * (t_lo - lo)
+    hi += relax_frac * (t_hi - hi)
+
+    if contain is not None:
+        c_lo, c_hi = (float(v) for v in contain)
+        lo = min(lo, c_lo)
+        hi = max(hi, c_hi)
+    return lo, hi
 
 
 class LongProfile(object):

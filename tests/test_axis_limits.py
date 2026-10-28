@@ -144,14 +144,27 @@ def test_raising_uplift_mid_run_is_what_breaks_the_upper_limit():
 from drlp.longprofile import relax_limits
 
 
-def test_outward_is_immediate_so_nothing_is_ever_clipped():
-    # The invariant that matters: if the target contains the data, so does the
-    # result, on the very first call. No amount of relaxation delay is allowed
-    # to leave the subject outside its own axis.
+def test_easing_is_symmetric_so_the_limits_evolve_rather_than_snap():
+    # Both edges move a fraction of the gap, in either direction. The axis
+    # must not jump to a fit and then sit there, which is what an
+    # immediate-outward rule did: it changed on 44 of the 300 frames after a
+    # base-level drop.
     cur = (0.0, 100.0)
     for target in ((-500.0, 100.0), (0.0, 900.0), (-500.0, 900.0)):
         lo, hi = relax_limits(cur, target, relax_frac=0.05)
-        assert lo <= target[0] and hi >= target[1]
+        assert cur[0] >= lo > target[0] or target[0] == cur[0]
+        assert cur[1] <= hi < target[1] or target[1] == cur[1]
+
+
+def test_contain_is_never_clipped_however_far_the_easing_lags():
+    # Easing costs nothing it must not cost. Whatever the gap, the span passed
+    # as `contain` is inside the result on the very first call.
+    cur, target = (0.0, 100.0), (-5000.0, 9000.0)
+    lo, hi = relax_limits(cur, target, relax_frac=0.01, contain=(-4000.0, 8000.0))
+    assert lo <= -4000.0 and hi >= 8000.0
+    # and with no contain, the easing is free to lag
+    lo, hi = relax_limits(cur, target, relax_frac=0.01)
+    assert lo > -4000.0 and hi < 8000.0
 
 
 def test_inward_is_gradual_and_converges():
@@ -193,10 +206,11 @@ def test_monotone_and_never_overshoots_while_tightening():
 
 def test_the_two_degenerate_rates():
     cur, target = (-1000.0, 1000.0), (-10.0, 10.0)
-    assert relax_limits(cur, target, 0.0) == cur            # never tightens
+    assert relax_limits(cur, target, 0.0) == cur            # frozen
     assert relax_limits(cur, target, 1.0) == target         # snaps to the fit
-    # but even at rate 0, outward still moves at once
-    assert relax_limits(cur, (-5000.0, 1000.0), 0.0)[0] == -5000.0
+    # at rate 0 the limits do not move, but contain still holds
+    assert relax_limits(cur, (-5000.0, 1000.0), 0.0,
+                        contain=(-5000.0, 1000.0))[0] == -5000.0
 
 
 def test_relax_frac_is_validated():
@@ -224,9 +238,9 @@ def test_tracking_a_live_model_never_clips_and_recovers_the_view():
         lp.set_uplift_rate(U_rate)
         for _ in range(n_steps):
             lp.evolve(nt=1, dt=1e11)
-            limits = relax_limits(limits, lp.elevation_limits(), frac)
+            limits = relax_limits(limits, lp.elevation_limits(), frac,
+                                  contain=(lp.z.min(), lp.z.max()))
             assert limits[0] <= lp.z.min() and limits[1] >= lp.z.max()
-            assert limits[0] <= lp.z_bl
 
     # after uplift drops, the view is tight again rather than stranded
     assert fraction_used() > 0.5, f"view never recovered: {fraction_used():.3f}"

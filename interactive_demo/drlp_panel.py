@@ -202,17 +202,21 @@ def _fit_y(lp):
 
 
 def _track_y(lp):
-    """Move the axis toward a tight fit: outward at once, inward gradually.
+    """Ease the axis toward a tight fit, in both directions, every frame.
 
-    Outward immediately, because a profile that has left the frame looks
-    exactly like one that stopped moving. Inward over about half a second, so
-    the view tightens back after a transient instead of being stranded. The
-    expand-only rule it replaces could not tighten at all: after uplift was
-    raised to 2 mm/yr and lowered to 0.1, the river occupied 3.5% of the
-    plot's height and stayed there.
+    The limits evolve through time rather than snapping: both edges move
+    about 6% of the remaining gap per frame, which is half a second at 30
+    fps. Only the PROFILE is guaranteed to stay in frame, so a base-level
+    drop pans the view down over the following half-second instead of
+    widening the axis to its final extent in one frame -- which is what an
+    immediate-outward rule did, changing the axis on 44 of the 300 frames
+    after a drop and reading as a jump and then a freeze.
     """
     fig.y_range.start, fig.y_range.end = relax_limits(
-        (fig.y_range.start, fig.y_range.end), lp.elevation_limits(), RELAX_Y)
+        (fig.y_range.start, fig.y_range.end),
+        lp.elevation_limits(),
+        RELAX_Y,
+        contain=(float(lp.z.min()), float(lp.z.max())))
 
 
 def step(event=None):
