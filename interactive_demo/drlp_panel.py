@@ -104,28 +104,35 @@ fig.x_range.start = float(_lp.x.min() / 1000.)
 fig.x_range.end = float(_lp.x_bl / 1000.)
 
 logK = pn.widgets.FloatSlider(
-    name="Erodibility  log₁₀ K  (units depend on m and n)",
+    label="Erodibility  log₁₀ K  (units depend on m and n)",
     start=-10, end=-7, step=0.1, value=LOGK0, format="0.0")
-m_sl = pn.widgets.FloatSlider(name="Discharge exponent  m",
+m_sl = pn.widgets.FloatSlider(label="Discharge exponent  m",
                               start=0.1, end=1.0, step=0.05, value=M0,
                               format="0.00")
-n_sl = pn.widgets.FloatSlider(name="Slope exponent  n",
+n_sl = pn.widgets.FloatSlider(label="Slope exponent  n",
                               start=0.5, end=2.5, step=0.1, value=N0,
                               format="0.0")
-U_sl = pn.widgets.FloatSlider(name="Rock uplift rate  U  [mm/yr]",
+U_sl = pn.widgets.FloatSlider(label="Rock uplift rate  U  [mm/yr]",
                               start=0.0, end=2.0, step=0.1, value=U0,
                               format="0.0")
-# Base level falls, and never rises on a river that already exists: stream
-# power erodes and never deposits, so nothing here can bring a drowned bed
-# back up.
+# Base level falls and does not rise. Stream power erodes and never deposits,
+# so dz/dt = U - E with E >= 0 means dz/dt <= U: there is no mechanism in this
+# model that raises a bed faster than the rock it sits on.
 #
-# Lowering it is a forcing applied to the running profile. RAISING it rebuilds
-# the river at the new base level instead, which is a different initial
-# condition rather than an aggradation the model cannot perform. Refusing the
-# drag outright was the first attempt and it was worse: once the slider
-# reached its floor, nothing could ever bring it back and the control was
-# one-way for the rest of the session.
-zbl = pn.widgets.FloatSlider(name="Base level  [m]  (lower to force, raise to rebuild)",
+# So raising the slider DOES NOTHING. It snaps back. An earlier version
+# rebuilt the river at the higher base level instead, which looked like a
+# response and was not one: dragging up from 190 kyr into a transient, with a
+# knickpoint in the profile and 3242 m of relief, discarded all of it and
+# substituted a fresh steady-state river at t = 0. A new initial condition
+# dressed as a base-level rise.
+#
+# Refusing outright was the FIRST attempt here too, and was rejected then
+# because it left the control one-way: once the slider reached its floor
+# nothing could bring it back. The lock answers that, and answers it
+# physically -- base level comes up by riding the uplift, and only by that.
+# Where U = 0 it cannot come up at all, which is not a dead end in the
+# interface but the physics of a landscape that is not rising.
+zbl = pn.widgets.FloatSlider(label="Base level  [m]  (falls only \u2013 \U0001f512 to raise it with uplift)",
                              start=-2000, end=0, step=20, value=ZBL0)
 _bl_floor = {"z": ZBL0}
 
@@ -134,14 +141,15 @@ def on_base_level(event):
     if _syncing["on"] or bl_lock.value:
         return                          # the lock is driving it
     if event.new > _bl_floor["z"]:
-        _bl_floor["z"] = event.new
-        do_reset()                      # a rise is a rebuild, not a forcing
-    else:
-        _bl_floor["z"] = event.new
-        sim["z_bl"] = event.new
+        _syncing["on"] = True           # refuse: snap back, change nothing
+        zbl.value = _bl_floor["z"]
+        _syncing["on"] = False
+        return
+    _bl_floor["z"] = event.new
+    sim["z_bl"] = event.new
 
 run = pn.widgets.Toggle(label="▶ Run", value=False)
-reset = pn.widgets.Button(label="Set to steady state", button_type="primary")
+reset = pn.widgets.Button(label="Set to steady state", color="primary")
 
 # Locking base level to the uplift rate puts the outlet on the same rising
 # rock as the rest of the profile, so the WHOLE long profile goes up at U and
@@ -153,18 +161,18 @@ reset = pn.widgets.Button(label="Set to steady state", button_type="primary")
 # Unlocked, base level is independent and the only direction is down, because
 # stream power erodes and never deposits.
 bl_lock = pn.widgets.Toggle(label="\U0001f513 Base level free",
-                            button_type="default", width=210)
+                            color="default", width=210)
 _syncing = {"on": False}
 
 
 def toggle_lock(event):
     if event.new:
         bl_lock.label = "\U0001f512 Locked to uplift"
-        bl_lock.button_type = "warning"
+        bl_lock.color = "warning"
         zbl.disabled = True
     else:
         bl_lock.label = "\U0001f513 Base level free"
-        bl_lock.button_type = "default"
+        bl_lock.color = "default"
         # Hand control back without a jump. The lock may have carried base
         # level far above the slider's range -- 19 km after 38 Myr at 0.5
         # mm/yr -- and simply clamping it would drop base level by that much
