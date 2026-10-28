@@ -165,6 +165,27 @@ bl_lock = pn.widgets.Toggle(label="\U0001f513 Base level free",
 _syncing = {"on": False}
 
 
+def _show_base_level(z_bl):
+    """Move the slider's handle to where base level actually is.
+
+    Called every frame while the lock holds, so the bar creeps up with the
+    rock instead of sitting frozen where it was when the lock went on. The
+    slider's upper end grows to keep up: base level under the lock rises
+    without bound, and a handle pinned at the top of a fixed range would stop
+    reporting the truth exactly when it got interesting.
+
+    The floor moves with it. Base level has genuinely risen, so the level the
+    slider refuses to go back above is the new one, and dragging down from
+    there is a real forcing rather than undoing the uplift.
+    """
+    _syncing["on"] = True
+    if z_bl > zbl.end:
+        zbl.end = float(np.ceil(z_bl / 100.0) * 100.0)
+    zbl.value = float(min(max(z_bl, zbl.start), zbl.end))
+    _syncing["on"] = False
+    _bl_floor["z"] = zbl.value
+
+
 def toggle_lock(event):
     if event.new:
         bl_lock.label = "\U0001f512 Locked to uplift"
@@ -173,25 +194,14 @@ def toggle_lock(event):
     else:
         bl_lock.label = "\U0001f513 Base level free"
         bl_lock.color = "default"
-        # Hand control back without a jump. The lock may have carried base
-        # level far above the slider's range -- 19 km after 38 Myr at 0.5
-        # mm/yr -- and simply clamping it would drop base level by that much
-        # in one frame. So shift the datum instead: subtract the same constant
-        # from the profile and from base level, which changes nothing physical
-        # (the model has no absolute datum, only relief and slope) and leaves
-        # the river exactly as the lock left it.
-        target = float(min(max(sim["z_bl"], zbl.start), zbl.end))
-        shift = sim["z_bl"] - target
-        sim["lp"].z = sim["lp"].z - shift
-        sim["z_bl"] = target
-        _syncing["on"] = True
-        zbl.value = target
-        _syncing["on"] = False
-        _bl_floor["z"] = target
+        # Nothing to hand back: the bar has been tracking base level all
+        # along, so it already reads where base level is and the floor is
+        # already there. An earlier version shifted the datum here, because a
+        # frozen bar could be 19 km below the truth and clamping it would drop
+        # base level by that much in one frame. A bar that follows removes the
+        # need for the shift rather than papering over it.
+        _show_base_level(sim["z_bl"])
         zbl.disabled = False
-        profile.data = {"x": sim["lp"].x / 1000., "z": sim["lp"].z}
-        baselevel.data = _bl_xy(target)
-        _fit_y(sim["lp"])
 
 
 
@@ -237,6 +247,7 @@ def step(event=None):
 
     if bl_lock.value:
         sim["z_bl"] += U * DT           # the outlet rides the rising rock
+        _show_base_level(sim["z_bl"])   # and the bar creeps up with it
     else:
         sim["z_bl"] = zbl.value
     lp.set_z_bl(sim["z_bl"])

@@ -120,3 +120,56 @@ def test_the_slider_cannot_reach_above_its_starting_point(m):
     m.zbl.value = 500.0                 # beyond the slider's own range
     assert m.zbl.value <= 0.0
     assert m.sim["z_bl"] <= 0.0
+
+
+def test_the_bar_creeps_up_with_base_level_while_locked(m):
+    # The slider must report where base level actually is, not sit frozen at
+    # wherever it was when the lock went on.
+    m.zbl.value = -800.0
+    m.do_reset()
+    m.bl_lock.value = True
+    for k in (50, 200, 600, 1500):
+        while m.sim["t"] < k * m.DT:
+            m.step()
+        assert m.zbl.value == pytest.approx(m.sim["z_bl"], abs=1e-6), (
+            f"the bar lags base level at frame {k}"
+        )
+        assert m._bl_floor["z"] == pytest.approx(m.sim["z_bl"], abs=1e-6)
+
+
+def test_the_bar_grows_its_range_rather_than_saturating(m):
+    # Base level under the lock rises without bound, and a handle pinned at
+    # the top of a fixed range would stop reporting the truth exactly when it
+    # got interesting.
+    m.zbl.value = -200.0
+    m.do_reset()
+    end0 = m.zbl.end
+    m.bl_lock.value = True
+    for _ in range(2000):
+        m.step()
+    assert m.sim["z_bl"] > end0, "base level did not pass the original range"
+    assert m.zbl.end >= m.sim["z_bl"]
+    assert m.zbl.value == pytest.approx(m.sim["z_bl"], abs=1e-6)
+
+
+def test_unlocking_after_a_tracked_rise_needs_no_datum_shift(m):
+    # The bar has been telling the truth all along, so there is nothing to
+    # reconcile: base level, relief and the profile are untouched by the
+    # unlock, and it can be forced downward from the new level.
+    m.zbl.value = -800.0
+    m.do_reset()
+    m.bl_lock.value = True
+    for _ in range(1500):
+        m.step()
+    bl, z, relief = m.sim["z_bl"], m.sim["lp"].z.copy(), m.sim["lp"].z[0] - m.sim["z_bl"]
+
+    m.bl_lock.value = False
+    assert m.sim["z_bl"] == pytest.approx(bl)
+    assert np.array_equal(m.sim["lp"].z, z)
+    assert m.sim["lp"].z[0] - m.sim["z_bl"] == pytest.approx(relief)
+    assert not m.zbl.disabled
+
+    m.zbl.value = bl - 300.0
+    assert m.sim["z_bl"] == pytest.approx(bl - 300.0)
+    m.zbl.value = bl + 500.0
+    assert m.zbl.value == pytest.approx(bl - 300.0), "a raise was accepted"
