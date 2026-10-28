@@ -97,6 +97,16 @@ if [ -n "$PREV_WHEEL" ]; then
     fi
 fi
 
+if [ -n "${PINNED:-}" ] && [ -n "$PREV_WHEEL" ] \
+   && [ "$(basename "$PREV_WHEEL")" = "drlp-$PINNED-py3-none-any.whl" ]; then
+    say "WARNING: superseding the version a problem set was issued against"
+    echo "   PSET_VERSION names $PINNED, and that is the wheel now deployed."
+    echo "   artesian prunes the wheel it replaces, so this build removes it"
+    echo "   from the live directory. It stays in the site's git history, but"
+    echo "   nothing in the directory will say it was ever there."
+    echo "   Not blocking. Update PSET_VERSION if the pset should move with it."
+fi
+
 # --------------------------------------------------- shared files, before
 say "shared files before the build"
 declare -A BEFORE

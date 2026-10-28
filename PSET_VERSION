@@ -1,0 +1,13 @@
+# The DRLP version a problem set has been issued against.
+#
+# Andy, 28 October 2026: "This is the version for the pset."
+#
+# deploy_geomorphonline.sh reads this and warns loudly when a rebuild is about
+# to supersede it, because `artesian build` prunes the wheel it replaces: the
+# next --bump removes drlp-0.1.0.dev6-py3-none-any.whl from the live app
+# directory. It stays recoverable from the site's git history, but nothing in
+# the directory would say it had ever been there.
+#
+# This does not block a rebuild. Keep improving the demo; just know when a
+# version a student was asked to use is going away.
+0.1.0.dev6
