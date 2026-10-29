@@ -19,10 +19,20 @@ adapting a published model. **DRLP is now published**, GPL-3.0-or-later, at
 becomes a thin adapter and `advection.py`'s node update is deleted rather than
 maintained in two places.
 
-What FluvTree gains by doing it: general `n`, spatially variable `K`, `U` and
-`Q`, Hack's law and a power-law hydrology, and a test suite that checks the
-node update against closed forms. `advection.py` is `n = 1` only, and its own
-docstring calls `n != 1` "a later addition".
+What FluvTree gains by doing it: general `n`, and per-node `K` and `U`.
+`incise_n1_step` takes both as scalars (`c = dt * K * Q[i] ** m / (x_r -
+x[i])`), and `advection.py` is `n = 1` only, its own docstring calling
+`n != 1` "a later addition".
+
+**The uplift half of that is a capability FluvTree already owns and cannot
+reach.** `common/rates.broadcast_rate` normalizes a rate spec -- scalar, per
+segment, or a callable `spec(x)` -- to one array per segment, and
+`common/tectonics.uplift_rate` wraps it for exactly this purpose; the
+diffusion solver consumes it as `source_rate`. But `StreamPower.__init__`
+takes `U=0.0` as a scalar and its docstring says "Per-segment uplift via a
+graph field is a later extension". Adapting to `drlp.incision.step`, which
+takes `U` per node, wires an existing helper into a process that currently
+refuses it. No new machinery.
 
 ## The entry point
 
@@ -85,6 +95,52 @@ the node update:
   `test_network_steady_state_slopes_follow_discharge` already does;
 - a knickpoint crossing a confluence into both upstream branches;
 - general `n` on a network, which is new capability rather than a port.
+
+## What should NOT be ported, and why
+
+Scanned DRLP against FluvTree on 28 October 2026. Four things in DRLP exist
+*because* DRLP is one-dimensional, and copying them into a network model would
+be a regression rather than a gain:
+
+1. **Hack's law, `A = k_xA x**P_xA`.** DRLP needs it because it has no
+   network. FluvTree accumulates drainage area through topology --
+   `generate/topology.py` carries `segment_length_area_ratio`, `supply_area`
+   and `segment_areas` -- which is the real thing Hack's law approximates.
+2. **The `A -> Q` power-law hydrology.** FluvTree carries `Q` as a graph field
+   set by its generators. Imposing `Q = k_AQ A**P_AQ` over that would replace
+   accumulated discharge with a one-dimensional stand-in.
+3. **`set_K`'s `basis` switch (`"Q"` / `"A"` / `"Q/B"`).** It lets one scalar
+   driver stand in for several quantities DRLP does not carry. FluvTree has
+   the actual fields, width included, for the alluvial closures.
+4. **`elevation_limits` and `relax_limits`.** Written for an animated browser
+   view at 30 fps. `plot.py` draws static matplotlib figures, where autoscale
+   is correct and there is nothing to track.
+
+## Two things that flow the other way
+
+1. **`broadcast_rate`'s callable form is better than DRLP's.** DRLP's
+   `_as_node_array` takes a scalar or an array; FluvTree's takes a scalar, a
+   per-segment value, or `spec(x)`. A callable `U(x)` imposes a fault without
+   precomputing an array, and DRLP should adopt it.
+2. **`analysis.slope_area` and `plot.slope_area` are the shape DRLP's unbuilt
+   Phase 5 should take.** They already handle the distinction DRLP arrived at
+   from the other direction: the abscissa is selectable, defaulting to `Q`
+   (slope-discharge), and the docstring notes that against `A` the fit's
+   negative is the concavity index. Fitting against `Q` gives `m/n`; against
+   `A` it gives `theta = m P_AQ / n`, which is not `m/n` unless the hydrology
+   is linear. DRLP should follow that interface rather than invent one.
+
+## One gap in both
+
+Neither documents that the stream-power law cannot deposit. `E >= 0` gives
+`dz/dt <= U` everywhere, so a base-level **rise** has no fluvial answer: the
+bed comes up only at the rock uplift rate, and not at all without one.
+`stream_power.py` and `advection.py` say nothing about it, and only
+`fixed_bed.py` mentions deposition at all. DRLP states it in its module
+docstring, in `set_z_bl`, in `tests/test_validity.py`, and in the browser
+demo. **That paragraph is worth adding to `stream_power.py` whether or not the
+adapter is written** -- it is prose, not code, and it is the one thing a
+reader can get wrong without any error appearing.
 
 ## Scope
 
